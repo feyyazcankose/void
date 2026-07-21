@@ -68,6 +68,7 @@ import './miscWokrbenchContrib.js'
 import './fileService.js'
 
 // register source control management
+import '../common/voidSCMTypes.js'
 import './voidSCMService.js'
 
 // Kaneo accounts menu (activity bar Accounts: name + Çıkış Yap)

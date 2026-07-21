@@ -76,6 +76,9 @@ export class KaneoApiMainService extends Disposable implements IKaneoApiService 
 			...detail,
 			subtasks: detail.subtasks ?? [],
 			attachments: detail.attachments ?? [],
+			agentAutoCreateBranch: detail.agentAutoCreateBranch ?? false,
+			agentBranchPattern: detail.agentBranchPattern ?? null,
+			suggestedBranchName: detail.suggestedBranchName ?? null,
 			relations: (detail.relations ?? []).map((r: any) => ({
 				id: r.id,
 				relationType: r.relationType,

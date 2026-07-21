@@ -12,6 +12,7 @@ import { IHostService } from '../../../services/host/browser/host.js';
 import { StagingSelectionItem } from '../common/chatThreadServiceTypes.js';
 import { IKaneoApiService, KaneoDownloadedAttachment, KaneoTaskDetail } from '../common/kaneoApiService.js';
 import { KANEO_PENDING_AGENT_TASK_ID_KEY } from '../common/storageKeys.js';
+import { IVoidSCMService } from '../common/voidSCMTypes.js';
 import { IChatThreadService } from './chatThreadService.js';
 
 /** Same id as React `commandIds.ts` — keep the literal in sync (React must not import this file). */
@@ -47,6 +48,7 @@ function isTextishAttachment(att: KaneoDownloadedAttachment): boolean {
 export function buildTaskAgentPrompt(
 	task: KaneoTaskDetail,
 	downloaded: KaneoDownloadedAttachment[] = [],
+	opts?: { activeBranch?: string | null },
 ): string {
 	const code = `${task.projectName}-${task.number ?? '?'}`;
 	const labels = task.labels.length
@@ -81,6 +83,7 @@ export function buildTaskAgentPrompt(
 			.join('\n')
 		: '(none)';
 	const localPath = task.localPath?.trim() || null;
+	const branch = opts?.activeBranch?.trim() || null;
 
 	return [
 		`You are working on a Kaneo task assigned to me. Start implementing it now.`,
@@ -91,6 +94,7 @@ export function buildTaskAgentPrompt(
 		`- Title: ${task.title}`,
 		`- Project: ${task.projectName} (${task.projectId})`,
 		`- Local workspace path: ${localPath ?? '(not configured in Kaneo project settings)'}`,
+		branch ? `- Branch: ${branch}` : null,
 		`- Status / column: ${task.columnName ?? '(none)'} (${task.columnId ?? 'n/a'})`,
 		`- Priority: ${task.priority ?? '(none)'}`,
 		`- Due: ${due}`,
@@ -118,10 +122,11 @@ export function buildTaskAgentPrompt(
 		localPath
 			? `Work inside the local workspace at ${localPath}. Discover related files there.`
 			: `No local path is configured for this Kaneo project — ask the user which folder to use, or discover files in the current workspace.`,
+		branch ? `You are on git branch ${branch}. Keep commits on this branch.` : '',
 		`Read the description carefully.`,
 		`If acceptance criteria appear in the description, treat them as the definition of done.`,
 		`Ask only if something is blocked; otherwise start working.`,
-	].filter(line => line !== undefined).join('\n');
+	].filter(line => line != null && line !== undefined).join('\n');
 }
 
 function selectionsFromDownloads(downloaded: KaneoDownloadedAttachment[]): StagingSelectionItem[] {
@@ -163,22 +168,46 @@ function resolveInjectServices(accessor: ServicesAccessor) {
 		workspaceService: accessor.get(IWorkspaceContextService),
 		hostService: accessor.get(IHostService),
 		storageService: accessor.get(IStorageService),
+		scm: accessor.get(IVoidSCMService),
 	};
 }
 
 type InjectServices = Omit<ReturnType<typeof resolveInjectServices>, 'kaneoApi' | 'storageService'>;
 
+async function maybeCreateAgentBranch(
+	scm: IVoidSCMService,
+	task: KaneoTaskDetail,
+): Promise<string | null> {
+	if (!task.agentAutoCreateBranch) {
+		return null;
+	}
+	const localPath = task.localPath?.trim();
+	const branchName = task.suggestedBranchName?.trim();
+	if (!localPath || !branchName) {
+		return null;
+	}
+	try {
+		const created = await scm.gitCreateAndCheckoutBranch(localPath, branchName);
+		console.log(`[kaneo-chat-injection] checked out branch=${created}`);
+		return created;
+	} catch (e) {
+		console.warn('[kaneo-chat-injection] branch create/checkout failed', e);
+		return null;
+	}
+}
+
 async function injectTaskIntoChatWithServices(
 	services: InjectServices,
 	task: KaneoTaskDetail,
 	downloaded: KaneoDownloadedAttachment[],
+	activeBranch: string | null,
 ): Promise<void> {
 	const { commandService, chat } = services;
 
 	await commandService.executeCommand(VOID_OPEN_SIDEBAR_ACTION_ID);
 	chat.openNewThread();
 	const threadId = chat.state.currentThreadId;
-	const userMessage = buildTaskAgentPrompt(task, downloaded);
+	const userMessage = buildTaskAgentPrompt(task, downloaded, { activeBranch });
 	const _chatSelections = selectionsFromDownloads(downloaded);
 	await chat.addUserMessageAndStreamResponse({ userMessage, threadId, _chatSelections });
 	await chat.focusCurrentChat();
@@ -189,8 +218,9 @@ export async function injectTaskIntoChat(
 	task: KaneoTaskDetail,
 	downloaded: KaneoDownloadedAttachment[] = [],
 ): Promise<void> {
-	const { commandService, chat, workspaceService, hostService } = resolveInjectServices(accessor);
-	await injectTaskIntoChatWithServices({ commandService, chat, workspaceService, hostService }, task, downloaded);
+	const { commandService, chat, workspaceService, hostService, scm } = resolveInjectServices(accessor);
+	const activeBranch = await maybeCreateAgentBranch(scm, task);
+	await injectTaskIntoChatWithServices({ commandService, chat, workspaceService, hostService, scm }, task, downloaded, activeBranch);
 }
 
 /**
@@ -209,6 +239,7 @@ export async function triggerAgentFromTaskId(
 		workspaceService,
 		hostService,
 		storageService,
+		scm,
 	} = resolveInjectServices(accessor);
 
 	const task = await kaneoApi.getTaskDetail(taskId);
@@ -232,6 +263,8 @@ export async function triggerAgentFromTaskId(
 
 	storageService.remove(KANEO_PENDING_AGENT_TASK_ID_KEY, StorageScope.APPLICATION);
 
+	const activeBranch = await maybeCreateAgentBranch(scm, task);
+
 	let downloaded: KaneoDownloadedAttachment[] = [];
 	try {
 		downloaded = await kaneoApi.downloadTaskAttachments(taskId);
@@ -239,7 +272,7 @@ export async function triggerAgentFromTaskId(
 		console.warn('[kaneo-chat-injection] attachment download failed', e);
 	}
 
-	await injectTaskIntoChatWithServices({ commandService, chat, workspaceService, hostService }, task, downloaded);
+	await injectTaskIntoChatWithServices({ commandService, chat, workspaceService, hostService, scm }, task, downloaded, activeBranch);
 }
 
 export function peekPendingAgentTaskId(storageService: IStorageService): string | undefined {

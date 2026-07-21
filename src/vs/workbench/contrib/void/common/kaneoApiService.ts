@@ -109,6 +109,11 @@ export interface KaneoTaskDetail extends KaneoTaskSummary {
 	attachments: KaneoTaskAttachment[];
 	/** Current user's local filesystem path for the task's project (from Kaneo). */
 	localPath: string | null;
+	/** Project setting: create/checkout branch before agent starts. */
+	agentAutoCreateBranch?: boolean;
+	agentBranchPattern?: string;
+	/** Server-resolved branch name from the project formula. */
+	suggestedBranchName?: string | null;
 }
 
 export type KaneoRelationType = 'blocks' | 'related' | 'subtask';

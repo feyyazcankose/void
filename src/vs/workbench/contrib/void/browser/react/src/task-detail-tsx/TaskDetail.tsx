@@ -30,9 +30,9 @@ export const TaskDetail = ({ issueId }: { issueId: string }) => {
 
 	const [task, setTask] = useState<TaskDetailData | null | undefined>(undefined) // undefined = loading
 	const [projectIssues, setProjectIssues] = useState<Issue[]>([])
-	const [subTasksOpen, setSubTasksOpen] = useState(true)
-	const [relationsOpen, setRelationsOpen] = useState(true)
-	const [filesOpen, setFilesOpen] = useState(true)
+	const [subTasksOpen, setSubTasksOpen] = useState(false)
+	const [relationsOpen, setRelationsOpen] = useState(false)
+	const [filesOpen, setFilesOpen] = useState(false)
 	const [addingSubtask, setAddingSubtask] = useState(false)
 	const [addingRelation, setAddingRelation] = useState(false)
 	const [subtaskTitle, setSubtaskTitle] = useState('')
@@ -52,22 +52,22 @@ export const TaskDetail = ({ issueId }: { issueId: string }) => {
 		let cancelled = false
 		setTask(undefined)
 		setError(null)
-		;(async () => {
-			try {
-				const [t, tasks] = await Promise.all([
-					kaneoApi.getTaskDetail(issueId),
-					kaneoApi.getMyTasks(),
-				])
-				if (cancelled) return
-				setTask(t)
-				setProjectIssues(tasks)
-			} catch (e) {
-				if (!cancelled) {
-					setTask(null)
-					setError(e instanceof Error ? e.message : String(e))
+			; (async () => {
+				try {
+					const [t, tasks] = await Promise.all([
+						kaneoApi.getTaskDetail(issueId),
+						kaneoApi.getMyTasks(),
+					])
+					if (cancelled) return
+					setTask(t)
+					setProjectIssues(tasks)
+				} catch (e) {
+					if (!cancelled) {
+						setTask(null)
+						setError(e instanceof Error ? e.message : String(e))
+					}
 				}
-			}
-		})()
+			})()
 		return () => { cancelled = true }
 	}, [kaneoApi, issueId])
 
@@ -95,14 +95,14 @@ export const TaskDetail = ({ issueId }: { issueId: string }) => {
 	}
 
 	if (task === undefined) {
-		return <div className={`@@void-scope ${isDark ? 'dark' : ''} p-8 text-void-fg-3 text-sm`} style={{ height: '100%', width: '100%', overflow: 'auto' }}>
-			Loading...
+		return <div className={`@@void-scope ${isDark ? 'dark' : ''} px-6 pt-12 text-void-fg-3 text-sm`} style={{ height: '100%', width: '100%', overflow: 'auto' }}>
+			<div className='max-w-4xl mx-auto'>Loading...</div>
 		</div>
 	}
 
 	if (!task) {
-		return <div className={`@@void-scope ${isDark ? 'dark' : ''} p-8 text-void-fg-3 text-sm`} style={{ height: '100%', width: '100%', overflow: 'auto' }}>
-			{error ?? 'This issue no longer exists.'}
+		return <div className={`@@void-scope ${isDark ? 'dark' : ''} px-6 pt-12 text-void-fg-3 text-sm`} style={{ height: '100%', width: '100%', overflow: 'auto' }}>
+			<div className='max-w-4xl mx-auto'>{error ?? 'This issue no longer exists.'}</div>
 		</div>
 	}
 
@@ -115,10 +115,8 @@ export const TaskDetail = ({ issueId }: { issueId: string }) => {
 		className={`@@void-scope ${isDark ? 'dark' : ''}`}
 		style={{ height: '100%', width: '100%', overflow: 'auto' }}
 	>
-		<div className='flex flex-col md:flex-row w-full bg-void-bg-2 text-void-fg-1' style={{ minHeight: '100%' }}>
-
-			{/* Main content */}
-			<main className='flex-1 min-w-0 p-8'>
+		<div className='flex flex-col w-full bg-void-bg-2 text-void-fg-1' style={{ minHeight: '100%' }}>
+			<main className='w-full max-w-4xl mx-auto px-6 pt-12 pb-8'>
 				<div className='flex items-center gap-1.5 text-xs text-void-fg-3 mb-4'>
 					<button onClick={openTasksPane} className='hover:text-void-fg-1'>Projects</button>
 					<ChevronRight size={12} />
@@ -126,7 +124,7 @@ export const TaskDetail = ({ issueId }: { issueId: string }) => {
 					<ChevronRight size={12} />
 					<span className='text-void-fg-2 font-medium'>{projectCode(task.projectName)}-{task.number ?? '?'}</span>
 				</div>
-				<h1 className='text-3xl font-bold text-void-fg-1 mb-5 leading-tight'>{task.title}</h1>
+				<h1 className='text-3xl font-bold text-void-fg-1 mb-4 leading-tight'>{task.title}</h1>
 
 				<p className='text-sm text-void-fg-2 leading-relaxed whitespace-pre-wrap'>
 					{task.description || 'No description.'}
@@ -137,7 +135,7 @@ export const TaskDetail = ({ issueId }: { issueId: string }) => {
 				)}
 
 				{/* Attachments */}
-				<div className='border-t border-void-border-2 pt-3 mt-4'>
+				<div className='mt-6'>
 					<button onClick={() => setFilesOpen(o => !o)} className='flex items-center justify-between w-full text-sm text-void-fg-2'>
 						<span className='flex items-center gap-1.5'>
 							{filesOpen ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
@@ -163,7 +161,7 @@ export const TaskDetail = ({ issueId }: { issueId: string }) => {
 				</div>
 
 				{/* Sub-issues */}
-				<div className='border-t border-void-border-2 pt-3 mt-3'>
+				<div className='mt-3'>
 					<div className='flex items-center justify-between w-full text-sm text-void-fg-2'>
 						<button onClick={() => setSubTasksOpen(o => !o)} className='flex items-center gap-1.5'>
 							{subTasksOpen ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
@@ -171,7 +169,7 @@ export const TaskDetail = ({ issueId }: { issueId: string }) => {
 							{subtasks.length > 0 && <span className='text-void-fg-3'>({subtasks.length})</span>}
 						</button>
 						<button
-							onClick={() => { setAddingSubtask(v => !v); setAddingRelation(false) }}
+							onClick={() => { setAddingSubtask(v => !v); setAddingRelation(false); setSubTasksOpen(true) }}
 							className='p-1 rounded hover:bg-void-bg-1 text-void-fg-3 hover:text-void-fg-1'
 							title='Add sub-issue'
 						>
@@ -231,7 +229,7 @@ export const TaskDetail = ({ issueId }: { issueId: string }) => {
 				</div>
 
 				{/* Relations */}
-				<div className='border-t border-void-border-2 pt-3 mt-3'>
+				<div className='mt-3'>
 					<div className='flex items-center justify-between w-full text-sm text-void-fg-2'>
 						<button onClick={() => setRelationsOpen(o => !o)} className='flex items-center gap-1.5'>
 							{relationsOpen ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
@@ -239,7 +237,7 @@ export const TaskDetail = ({ issueId }: { issueId: string }) => {
 							{relations.length > 0 && <span className='text-void-fg-3'>({relations.length})</span>}
 						</button>
 						<button
-							onClick={() => { setAddingRelation(v => !v); setAddingSubtask(false) }}
+							onClick={() => { setAddingRelation(v => !v); setAddingSubtask(false); setRelationsOpen(true) }}
 							className='p-1 rounded hover:bg-void-bg-1 text-void-fg-3 hover:text-void-fg-1'
 							title='Add relation'
 						>
@@ -314,7 +312,23 @@ export const TaskDetail = ({ issueId }: { issueId: string }) => {
 					)}
 				</div>
 
-				<div className='border-t border-void-border-2 mt-6 pt-6'>
+				{/* Status / priority / labels (formerly sidebar) */}
+				<div className='mt-6 flex flex-col gap-3'>
+					<div className='flex flex-wrap items-center gap-x-5 gap-y-2'>
+						<MetaRow icon={columnIcon({ isStarted: task.columnIsStarted, isFinal: task.columnIsFinal }, 15)} label={task.columnName ?? 'No status'} bold />
+						<MetaRow icon={<Flag size={15} className='text-void-fg-3' />} label={task.priority ? task.priority : 'No priority'} />
+						{task.dueDate ? <MetaRow icon={<CalendarClock size={15} className='text-void-fg-3' />} label={new Date(task.dueDate).toLocaleDateString()} /> : null}
+					</div>
+					<div className='flex flex-wrap items-center gap-1.5'>
+						<span className='text-xs text-void-fg-3 mr-1'>Labels</span>
+						{task.labels.map(l => (
+							<span key={l.name} className='text-xs rounded-full px-2 py-0.5' style={{ backgroundColor: l.color, color: '#fff' }}>{l.name}</span>
+						))}
+						{task.labels.length === 0 && <span className='text-xs text-void-fg-3'>No labels</span>}
+					</div>
+				</div>
+
+				<div className='mt-8'>
 					<div className='flex items-center justify-between mb-3 flex-wrap gap-2'>
 						<h3 className='text-sm font-semibold text-void-fg-1'>Comments</h3>
 						<div className='flex items-center gap-2 text-xs text-void-fg-3'>
@@ -388,29 +402,11 @@ export const TaskDetail = ({ issueId }: { issueId: string }) => {
 					</div>
 				</div>
 			</main>
-
-			{/* Right sidebar */}
-			<aside className='md:w-72 w-full p-6 shrink-0 flex flex-col gap-4'>
-				<SidebarRow icon={columnIcon({ isStarted: task.columnIsStarted, isFinal: task.columnIsFinal }, 15)} label={task.columnName ?? 'No status'} bold />
-				<SidebarRow icon={<Flag size={15} className='text-void-fg-3' />} label={task.priority ? task.priority : 'No priority'} />
-				{task.dueDate ? <SidebarRow icon={<CalendarClock size={15} className='text-void-fg-3' />} label={new Date(task.dueDate).toLocaleDateString()} /> : null}
-
-				{/* Labels */}
-				<div className='mt-2'>
-					<div className='text-xs text-void-fg-3 mb-2'>Labels</div>
-					<div className='flex flex-wrap gap-1.5'>
-						{task.labels.map(l => (
-							<span key={l.name} className='text-xs rounded-full px-2 py-0.5' style={{ backgroundColor: l.color, color: '#fff' }}>{l.name}</span>
-						))}
-						{task.labels.length === 0 && <span className='text-xs text-void-fg-3'>No labels</span>}
-					</div>
-				</div>
-			</aside>
 		</div>
 	</div>
 }
 
-const SidebarRow = ({ icon, label, bold, muted }: { icon: React.ReactNode, label: string, bold?: boolean, muted?: boolean }) => {
+const MetaRow = ({ icon, label, bold, muted }: { icon: React.ReactNode, label: string, bold?: boolean, muted?: boolean }) => {
 	return <div className='flex items-center gap-2.5 text-sm'>
 		{icon}
 		<span className={muted ? 'text-void-fg-3' : bold ? 'text-void-fg-1 font-medium' : 'text-void-fg-2'}>{label}</span>
