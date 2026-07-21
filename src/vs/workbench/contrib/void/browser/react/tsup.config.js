@@ -14,6 +14,8 @@ export default defineConfig({
 		'./src2/void-onboarding/index.tsx',
 		'./src2/quick-edit-tsx/index.tsx',
 		'./src2/diff/index.tsx',
+		'./src2/tasks-tsx/index.tsx',
+		'./src2/task-detail-tsx/index.tsx',
 	],
 	outDir: './out',
 	format: ['esm'],

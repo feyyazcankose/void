@@ -25,6 +25,12 @@ import './autocompleteService.js'
 // settings pane
 import './voidSettingsPane.js'
 
+// tasks pane (kanban board) + title bar "Tasks | Editör" toggle
+import './voidTasksPane.js'
+
+// task detail pane (opened by clicking an issue in the Tasks board)
+import './voidTaskDetailPane.js'
+
 // register css
 import './media/void.css'
 

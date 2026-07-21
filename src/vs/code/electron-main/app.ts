@@ -127,6 +127,10 @@ import ErrorTelemetry from '../../platform/telemetry/electron-main/errorTelemetr
 // ignore the eslint errors below
 import { IMetricsService } from '../../workbench/contrib/void/common/metricsService.js';
 import { IVoidUpdateService } from '../../workbench/contrib/void/common/voidUpdateService.js';
+import { IKaneoAuthService } from '../../workbench/contrib/void/common/kaneoAuthService.js';
+import { KaneoAuthMainService } from '../../workbench/contrib/void/electron-main/kaneoAuthMainService.js';
+import { IKaneoApiService } from '../../workbench/contrib/void/common/kaneoApiService.js';
+import { KaneoApiMainService } from '../../workbench/contrib/void/electron-main/kaneoApiMainService.js';
 import { MetricsMainService } from '../../workbench/contrib/void/electron-main/metricsMainService.js';
 import { VoidMainUpdateService } from '../../workbench/contrib/void/electron-main/voidUpdateMainService.js';
 import { LLMMessageChannel } from '../../workbench/contrib/void/electron-main/sendLLMMessageChannel.js';
@@ -1105,6 +1109,8 @@ export class CodeApplication extends Disposable {
 		services.set(IMetricsService, new SyncDescriptor(MetricsMainService, undefined, false));
 		services.set(IVoidUpdateService, new SyncDescriptor(VoidMainUpdateService, undefined, false));
 		services.set(IVoidSCMService, new SyncDescriptor(VoidSCMService, undefined, false));
+		services.set(IKaneoAuthService, new SyncDescriptor(KaneoAuthMainService, undefined, false));
+		services.set(IKaneoApiService, new SyncDescriptor(KaneoApiMainService, undefined, false));
 
 		// Default Extensions Profile Init
 		services.set(IExtensionsProfileScannerService, new SyncDescriptor(ExtensionsProfileScannerService, undefined, true));
@@ -1242,6 +1248,12 @@ export class CodeApplication extends Disposable {
 
 		const voidUpdatesChannel = ProxyChannel.fromService(accessor.get(IVoidUpdateService), disposables);
 		mainProcessElectronServer.registerChannel('void-channel-update', voidUpdatesChannel);
+
+		const kaneoAuthChannel = ProxyChannel.fromService(accessor.get(IKaneoAuthService), disposables);
+		mainProcessElectronServer.registerChannel('kaneo-auth', kaneoAuthChannel);
+
+		const kaneoApiChannel = ProxyChannel.fromService(accessor.get(IKaneoApiService), disposables);
+		mainProcessElectronServer.registerChannel('kaneo-api', kaneoApiChannel);
 
 		const sendLLMMessageChannel = new LLMMessageChannel(accessor.get(IMetricsService));
 		mainProcessElectronServer.registerChannel('void-channel-llmMessage', sendLLMMessageChannel);

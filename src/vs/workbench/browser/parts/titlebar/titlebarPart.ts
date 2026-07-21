@@ -12,7 +12,7 @@ import { MenuBarVisibility, getTitleBarStyle, getMenuBarVisibility, hasCustomTit
 import { IContextMenuService } from '../../../../platform/contextview/browser/contextView.js';
 import { StandardMouseEvent } from '../../../../base/browser/mouseEvent.js';
 import { IConfigurationService, IConfigurationChangeEvent } from '../../../../platform/configuration/common/configuration.js';
-import { DisposableStore, IDisposable } from '../../../../base/common/lifecycle.js';
+import { DisposableStore, IDisposable, toDisposable } from '../../../../base/common/lifecycle.js';
 import { IBrowserWorkbenchEnvironmentService } from '../../../services/environment/browser/environmentService.js';
 import { IThemeService } from '../../../../platform/theme/common/themeService.js';
 import { TITLE_BAR_ACTIVE_BACKGROUND, TITLE_BAR_ACTIVE_FOREGROUND, TITLE_BAR_INACTIVE_FOREGROUND, TITLE_BAR_INACTIVE_BACKGROUND, TITLE_BAR_BORDER, WORKBENCH_BACKGROUND } from '../../../common/theme.js';
@@ -55,6 +55,21 @@ import { IHoverDelegate } from '../../../../base/browser/ui/hover/hoverDelegate.
 import { CommandsRegistry } from '../../../../platform/commands/common/commands.js';
 import { safeIntl } from '../../../../base/common/date.js';
 import { TitleBarVisibleContext } from '../../../common/contextkeys.js';
+import { onUnexpectedError } from '../../../../base/common/errors.js';
+
+/**
+ * Extension point for contributing a single custom control into the title bar's
+ * leftmost content region (`.titlebar-left`), positioned before the app icon/menubar.
+ * Kept as a plain module-level hook (rather than a core -> contrib import) because
+ * workbench/browser layer rules forbid importing from workbench/contrib.
+ */
+export interface ITitleBarLeftContentContribution {
+	create(instantiationService: IInstantiationService): { element: HTMLElement; dispose(): void };
+}
+let titleBarLeftContentContribution: ITitleBarLeftContentContribution | undefined;
+export function registerTitleBarLeftContentContribution(contribution: ITitleBarLeftContentContribution): void {
+	titleBarLeftContentContribution = contribution;
+}
 
 export interface ITitleVariable {
 	readonly name: string;
@@ -440,6 +455,17 @@ export class BrowserTitlebarPart extends Part implements ITitlebarPart {
 		this.leftContent = append(this.rootContainer, $('.titlebar-left'));
 		this.centerContent = append(this.rootContainer, $('.titlebar-center'));
 		this.rightContent = append(this.rootContainer, $('.titlebar-right'));
+
+		// Void: custom "Tasks | Editör" toggle contributed from contrib/void (never on auxiliary windows)
+		if (!this.isAuxiliary && titleBarLeftContentContribution) {
+			try {
+				const { element, dispose } = titleBarLeftContentContribution.create(this.instantiationService);
+				append(this.leftContent, element);
+				this._register(toDisposable(dispose));
+			} catch (e) {
+				onUnexpectedError(e); // must never break titlebar construction for every window
+			}
+		}
 
 		// App Icon (Windows, Linux)
 		if ((isWindows || isLinux) && !hasNativeTitlebar(this.configurationService, this.titleBarStyle)) {

@@ -21,3 +21,8 @@ export const THREAD_STORAGE_KEY = 'void.chatThreadStorageII'
 
 
 export const OPT_OUT_KEY = 'void.app.optOutAll'
+
+
+// Kaneo Task Management integration (application-scope, main-process storage)
+export const KANEO_BASE_URL_STORAGE_KEY = 'kaneo.baseUrl.I'
+export const KANEO_ACCESS_TOKEN_STORAGE_KEY = 'kaneo.accessToken.I'

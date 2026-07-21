@@ -96,6 +96,45 @@
 	justify-content: flex-end;
 }
 
+/* Void: Tasks/Editör toggle pill */
+:root {
+	--void-mac-traffic-light-inset: 78px; /* default Electron native traffic-light inset; no existing var reserves this on macOS */
+}
+
+.monaco-workbench .part.titlebar > .titlebar-container > .titlebar-left > .void-tasks-toggle {
+	display: flex;
+	align-items: center;
+	height: 24px;
+	border-radius: 6px;
+	overflow: hidden;
+	border: 1px solid var(--vscode-commandCenter-border);
+	order: 0; /* leftmost within .titlebar-left, before app icon (order:1) / menubar (order:2) */
+	-webkit-app-region: no-drag; /* clickable, must opt out of the draggable title bar region */
+	position: relative; /* lifts above .titlebar-drag-region, same pattern as .menubar/.command-center/.action-toolbar-container */
+	z-index: 2500;
+	margin-left: 8px;
+	flex-shrink: 0;
+}
+
+.monaco-workbench.mac:not(.web) .part.titlebar > .titlebar-container > .titlebar-left > .void-tasks-toggle {
+	/* Native macOS traffic lights are drawn by Electron outside the DOM and reserve no
+	   layout space in this codebase (unlike the Windows/Linux WCO width variable). */
+	margin-left: var(--void-mac-traffic-light-inset);
+}
+
+.monaco-workbench .part.titlebar > .titlebar-container > .titlebar-left > .void-tasks-toggle > div {
+	padding: 0 10px;
+	font-size: 12px;
+	cursor: pointer;
+	color: var(--vscode-titleBar-inactiveForeground);
+	white-space: nowrap;
+}
+
+.monaco-workbench .part.titlebar > .titlebar-container > .titlebar-left > .void-tasks-toggle > div.active {
+	background: var(--vscode-commandCenter-activeBackground, var(--vscode-toolbar-hoverBackground));
+	color: var(--vscode-titleBar-activeForeground);
+}
+
 
 
 /* Window title text */
