@@ -62,15 +62,18 @@ export const Tasks = () => {
 				kaneoApi.getMyProjects(),
 				kaneoApi.getMyTasks(),
 			])
-			const mappedProjects: Project[] = kaneoProjects.map(p => ({
-				id: p.id,
-				name: p.name,
-				updatedAtMs: p.updatedAtMs,
-				localPath: p.localPath ?? null,
-				icon: p.icon || 'Layout',
-				iconColor: p.iconColor || '#64748b',
-				columns: p.columns,
-			}))
+			const mappedProjects: Project[] = kaneoProjects
+				.map(p => ({
+					id: p.id,
+					name: p.name,
+					updatedAtMs: p.updatedAtMs,
+					localPath: p.localPath ?? null,
+					icon: p.icon || 'Layout',
+					iconColor: p.iconColor || '#64748b',
+					columns: p.columns,
+				}))
+				// createdAt ASC (API field is exposed as updatedAtMs) — oldest project first in tabs
+				.sort((a, b) => a.updatedAtMs - b.updatedAtMs)
 			const mappedIssues: Issue[] = kaneoTasks.map(t => ({
 				id: t.id,
 				projectId: t.projectId,

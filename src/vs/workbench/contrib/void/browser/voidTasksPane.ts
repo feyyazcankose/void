@@ -26,6 +26,8 @@ import { Codicon } from '../../../../base/common/codicons.js';
 import { toDisposable } from '../../../../base/common/lifecycle.js';
 import { registerTitleBarLeftContentContribution } from '../../../browser/parts/titlebar/titlebarPart.js';
 import { TasksEditorToggleControl } from './titlebar/tasksEditorToggleControl.js';
+// Tasks immersive layout: hide activity bar / explorer / chat / panel while Tasks is active
+import './tasksImmersiveLayout.js';
 
 
 // mirrors voidSettingsPane.ts's VoidSettingsInput/VoidSettingsPane pattern

@@ -5,18 +5,18 @@
 
 import { addDisposableListener, EventType } from '../../../../../base/browser/dom.js';
 import { DisposableStore } from '../../../../../base/common/lifecycle.js';
-import { URI } from '../../../../../base/common/uri.js';
 import { localize } from '../../../../../nls.js';
 import { ICommandService } from '../../../../../platform/commands/common/commands.js';
+import { EditorsOrder } from '../../../../common/editor.js';
 import { IEditorService } from '../../../../services/editor/common/editorService.js';
+import { isTasksModeResource } from '../tasksImmersiveLayout.js';
 
 // Kept as literal constants (not imported from voidTasksPane.ts) to avoid a circular
 // import: voidTasksPane.ts is the file that imports *this* module to register the control.
-const VOID_TASKS_RESOURCE = URI.from({ scheme: 'void', path: 'tasks' });
 const VOID_TOGGLE_TASKS_ACTION_ID = 'workbench.action.toggleVoidTasks';
 
 /**
- * The "Tasks | Editör" segmented pill contributed into the title bar's left content
+ * The "Tasks | Editor" segmented pill contributed into the title bar's left content
  * region (see registerTitleBarLeftContentContribution in titlebarPart.ts).
  */
 export class TasksEditorToggleControl {
@@ -38,7 +38,7 @@ export class TasksEditorToggleControl {
 		this.element.appendChild(this._tasksPill);
 
 		this._editorPill = document.createElement('div');
-		this._editorPill.innerText = localize('voidEditorPill', "Editör");
+		this._editorPill.innerText = localize('voidEditorPill', "Editor");
 		this.element.appendChild(this._editorPill);
 
 		this._disposables.add(addDisposableListener(this._tasksPill, EventType.CLICK, () => {
@@ -46,12 +46,16 @@ export class TasksEditorToggleControl {
 		}));
 
 		this._disposables.add(addDisposableListener(this._editorPill, EventType.CLICK, () => {
-			// Only acts if Tasks is currently the active editor; otherwise the user is
-			// already looking at the normal editor view, so this is a no-op.
-			const openEditors = this.editorService.findEditors(VOID_TASKS_RESOURCE);
-			const isTasksActive = this.editorService.activeEditor?.resource?.toString() === VOID_TASKS_RESOURCE.toString();
-			if (openEditors.length > 0 && isTasksActive) {
-				this.editorService.closeEditors(openEditors);
+			// Leave Tasks mode: close Tasks board + any Task Detail tabs. Immersive
+			// chrome restore is driven by onDidActiveEditorChange in tasksImmersiveLayout.
+			if (!isTasksModeResource(this.editorService.activeEditor?.resource)) {
+				return;
+			}
+			const toClose = this.editorService.getEditors(EditorsOrder.SEQUENTIAL).filter(
+				({ editor }) => isTasksModeResource(editor.resource)
+			);
+			if (toClose.length > 0) {
+				this.editorService.closeEditors(toClose);
 			}
 		}));
 
@@ -60,7 +64,7 @@ export class TasksEditorToggleControl {
 	}
 
 	private _updateActiveState(): void {
-		const isTasksActive = this.editorService.activeEditor?.resource?.toString() === VOID_TASKS_RESOURCE.toString();
+		const isTasksActive = isTasksModeResource(this.editorService.activeEditor?.resource);
 		this._tasksPill.classList.toggle('active', isTasksActive);
 		this._editorPill.classList.toggle('active', !isTasksActive);
 	}
