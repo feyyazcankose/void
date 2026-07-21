@@ -73,6 +73,12 @@ import './voidSCMService.js'
 // Kaneo accounts menu (activity bar Accounts: name + Çıkış Yap)
 import './kaneoAccountsContribution.js'
 
+// Kaneo Trigger Agent → chat injection (manual button + Phase 4 WS reuse)
+import './kaneoChatInjection.js'
+
+// Kaneo WS task-trigger listener (connect on auth → auto-inject on TASK_ASSIGNED_STATUS_CHANGED)
+import './kaneoTaskTriggerService.js'
+
 // ---------- common (unclear if these actually need to be imported, because they're already imported wherever they're used) ----------
 
 // llmMessage
@@ -96,3 +102,4 @@ import '../common/voidModelService.js'
 // Kaneo auth (renderer proxy → main kaneo-auth channel)
 import '../common/kaneoAuthService.js'
 import '../common/kaneoApiService.js'
+import '../common/kaneoWsService.js'

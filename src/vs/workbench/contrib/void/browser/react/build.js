@@ -3,12 +3,12 @@
  *  Licensed under the Apache License, Version 2.0. See LICENSE.txt for more information.
  *--------------------------------------------------------------------------------------*/
 
-import { execSync } from 'child_process';
-import { spawn } from 'cross-spawn'
+import { execSync } from "child_process";
+import { spawn } from "cross-spawn";
 // Added lines below
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -19,7 +19,7 @@ function doesPathExist(filePath) {
 
 		return stats.isFile();
 	} catch (err) {
-		if (err.code === 'ENOENT') {
+		if (err.code === "ENOENT") {
 			return false;
 		}
 		throw err;
@@ -39,7 +39,6 @@ Diagram:
 
 */
 function findDesiredPathFromLocalPath(localDesiredPath, currentPath) {
-
 	// walk upwards until currentPath + localDesiredPath exists
 	while (!doesPathExist(path.join(currentPath, localDesiredPath))) {
 		const parentDir = path.dirname(currentPath);
@@ -52,7 +51,7 @@ function findDesiredPathFromLocalPath(localDesiredPath, currentPath) {
 	}
 
 	// return the `globallyDesiredPath`
-	const globalDesiredPath = path.join(currentPath, localDesiredPath)
+	const globalDesiredPath = path.join(currentPath, localDesiredPath);
 	return globalDesiredPath;
 }
 
@@ -60,95 +59,115 @@ function findDesiredPathFromLocalPath(localDesiredPath, currentPath) {
 function saveStylesFile() {
 	setTimeout(() => {
 		try {
-			const pathToCssFile = findDesiredPathFromLocalPath('./src/vs/workbench/contrib/void/browser/react/src2/styles.css', __dirname);
+			const pathToCssFile = findDesiredPathFromLocalPath(
+				"./src/vs/workbench/contrib/void/browser/react/src2/styles.css",
+				__dirname,
+			);
 
 			if (pathToCssFile === undefined) {
-				console.error('[scope-tailwind] Error finding styles.css');
+				console.error("[scope-tailwind] Error finding styles.css");
 				return;
 			}
 
 			// Or re-write with the same content:
-			const content = fs.readFileSync(pathToCssFile, 'utf8');
-			fs.writeFileSync(pathToCssFile, content, 'utf8');
-			console.log('[scope-tailwind] Force-saved styles.css');
+			const content = fs.readFileSync(pathToCssFile, "utf8");
+			fs.writeFileSync(pathToCssFile, content, "utf8");
+			console.log("[scope-tailwind] Force-saved styles.css");
 		} catch (err) {
-			console.error('[scope-tailwind] Error saving styles.css:', err);
+			console.error("[scope-tailwind] Error saving styles.css:", err);
 		}
 	}, 6000);
 }
 
 const args = process.argv.slice(2);
-const isWatch = args.includes('--watch') || args.includes('-w');
+const isWatch = args.includes("--watch") || args.includes("-w");
 
 if (isWatch) {
 	// this just builds it if it doesn't exist instead of waiting for the watcher to trigger
 	// Check if src2/ exists; if not, do an initial scope-tailwind build
-	if (!fs.existsSync('src2')) {
+	if (!fs.existsSync("src2")) {
 		try {
-			console.log('🔨 Running initial scope-tailwind build to create src2 folder...');
+			console.log(
+				"🔨 Running initial scope-tailwind build to create src2 folder...",
+			);
 			execSync(
 				'npx scope-tailwind ./src -o src2/ -s void-scope -c styles.css -p "void-"',
-				{ stdio: 'inherit' }
+				{ stdio: "inherit" },
 			);
-			console.log('✅ src2/ created successfully.');
+			console.log("✅ src2/ created successfully.");
 		} catch (err) {
-			console.error('❌ Error running initial scope-tailwind build:', err);
+			console.error("❌ Error running initial scope-tailwind build:", err);
 			process.exit(1);
 		}
 	}
 
 	// Watch mode
-	const scopeTailwindWatcher = spawn('npx', [
-		'nodemon',
-		'--watch', 'src',
-		'--ext', 'ts,tsx,css',
-		'--exec',
-		'npx scope-tailwind ./src -o src2/ -s void-scope -c styles.css -p "void-"'
+	const scopeTailwindWatcher = spawn("npx", [
+		"nodemon",
+		"--watch",
+		"src",
+		"--ext",
+		"ts,tsx,css",
+		"--exec",
+		'npx scope-tailwind ./src -o src2/ -s void-scope -c styles.css -p "void-"',
 	]);
 
-	const tsupWatcher = spawn('npx', [
-		'tsup',
-		'--watch'
-	]);
+	const tsupWatcher = spawn("npx", ["tsup", "--watch"]);
 
-	scopeTailwindWatcher.stdout.on('data', (data) => {
+	scopeTailwindWatcher.stdout.on("data", (data) => {
 		console.log(`[scope-tailwind] ${data}`);
 		// If the output mentions "styles.css", trigger the save:
-		if (data.toString().includes('styles.css')) {
+		if (data.toString().includes("styles.css")) {
 			saveStylesFile();
 		}
 	});
 
-	scopeTailwindWatcher.stderr.on('data', (data) => {
+	scopeTailwindWatcher.stderr.on("data", (data) => {
 		console.error(`[scope-tailwind] ${data}`);
 	});
 
 	// Handle tsup watcher output
-	tsupWatcher.stdout.on('data', (data) => {
+	tsupWatcher.stdout.on("data", (data) => {
 		console.log(`[tsup] ${data}`);
 	});
 
-	tsupWatcher.stderr.on('data', (data) => {
+	tsupWatcher.stderr.on("data", (data) => {
 		console.error(`[tsup] ${data}`);
 	});
 
 	// Handle process termination
-	process.on('SIGINT', () => {
+	process.on("SIGINT", () => {
 		scopeTailwindWatcher.kill();
 		tsupWatcher.kill();
 		process.exit();
 	});
 
-	console.log('🔄 Watchers started! Press Ctrl+C to stop both watchers.');
+	console.log("🔄 Watchers started! Press Ctrl+C to stop both watchers.");
 } else {
 	// Build mode
-	console.log('📦 Building...');
+	console.log("📦 Building...");
 
 	// Run scope-tailwind once
-	execSync('npx scope-tailwind ./src -o src2/ -s void-scope -c styles.css -p "void-"', { stdio: 'inherit' });
+	execSync(
+		'npx scope-tailwind ./src -o src2/ -s void-scope -c styles.css -p "void-"',
+		{ stdio: "inherit" },
+	);
 
 	// Run tsup once
-	execSync('npx tsup', { stdio: 'inherit' });
+	execSync("npx tsup", { stdio: "inherit" });
 
-	console.log('✅ Build complete!');
+	// Electron loads from out/vs/.../react/out — not src/.../react/out.
+	// Without this copy, Reload Window keeps the stale bundle.
+	const reactOut = path.join(__dirname, "out");
+	const electronReactOut = path.resolve(
+		__dirname,
+		"../../../../../../../out/vs/workbench/contrib/void/browser/react/out",
+	);
+	if (fs.existsSync(reactOut)) {
+		fs.mkdirSync(electronReactOut, { recursive: true });
+		fs.cpSync(reactOut, electronReactOut, { recursive: true });
+		console.log(`📋 Synced React out → ${electronReactOut}`);
+	}
+
+	console.log("✅ Build complete!");
 }

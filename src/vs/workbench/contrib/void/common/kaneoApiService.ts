@@ -10,8 +10,6 @@ import { IMainProcessService } from '../../../../platform/ipc/common/mainProcess
 
 // Shapes mirror kaneo-task's /api/my-work/* responses - see
 // mause-task-managment-web/kaneo-task/apps/api/src/my-work/controllers/*.ts
-// Statuses are each project's own real columns (position-ordered), not a bucketed/dummy
-// 3-value union - different projects can have different columns.
 
 export interface KaneoColumn {
 	id: string;
@@ -27,7 +25,12 @@ export interface KaneoProject {
 	name: string;
 	slug: string;
 	workspaceId: string;
+	/** Lucide icon name from Kaneo project settings (e.g. "Layout"). */
+	icon: string;
+	iconColor: string;
 	updatedAtMs: number;
+	/** Current user's local filesystem path for this project (from Kaneo). */
+	localPath: string | null;
 	columns: KaneoColumn[];
 }
 
@@ -62,20 +65,64 @@ export interface KaneoTaskRelation {
 	id: string;
 	relationType: string;
 	relatedTaskId: string;
+	relatedTaskTitle: string;
+	relatedTaskNumber: number | null;
+	relatedColumnName: string | null;
+	direction: 'outgoing' | 'incoming';
+}
+
+export interface KaneoTaskSubtask {
+	id: string;
+	relationId: string;
+	title: string;
+	number: number | null;
+	status: string | null;
+	columnName: string | null;
+}
+
+export interface KaneoTaskAttachment {
+	id: string;
+	filename: string;
+	mimeType: string;
+	size: number;
+	kind: string;
+	surface: string;
+	createdAtMs: number;
+	url: string;
+}
+
+export interface KaneoDownloadedAttachment {
+	id: string;
+	filename: string;
+	mimeType: string;
+	size: number;
+	localPath: string;
 }
 
 export interface KaneoTaskDetail extends KaneoTaskSummary {
 	description: string | null;
+	status?: string | null;
 	labels: KaneoTaskLabel[];
 	comments: KaneoTaskComment[];
+	subtasks: KaneoTaskSubtask[];
 	relations: KaneoTaskRelation[];
+	attachments: KaneoTaskAttachment[];
+	/** Current user's local filesystem path for the task's project (from Kaneo). */
+	localPath: string | null;
 }
+
+export type KaneoRelationType = 'blocks' | 'related' | 'subtask';
 
 export interface IKaneoApiService {
 	readonly _serviceBrand: undefined;
 	getMyProjects(): Promise<KaneoProject[]>;
 	getMyTasks(): Promise<KaneoTaskSummary[]>;
 	getTaskDetail(taskId: string): Promise<KaneoTaskDetail | null>;
+	createComment(taskId: string, content: string): Promise<void>;
+	createSubtask(parentTaskId: string, title: string): Promise<void>;
+	createRelation(sourceTaskId: string, targetTaskId: string, relationType: KaneoRelationType): Promise<void>;
+	/** Download task attachments to a temp folder for agent use. */
+	downloadTaskAttachments(taskId: string): Promise<KaneoDownloadedAttachment[]>;
 }
 
 export const IKaneoApiService = createDecorator<IKaneoApiService>('KaneoApiService');
@@ -95,6 +142,10 @@ class KaneoApiService implements IKaneoApiService {
 	getMyProjects: IKaneoApiService['getMyProjects'] = async () => this.kaneoApiService.getMyProjects();
 	getMyTasks: IKaneoApiService['getMyTasks'] = async () => this.kaneoApiService.getMyTasks();
 	getTaskDetail: IKaneoApiService['getTaskDetail'] = async (taskId) => this.kaneoApiService.getTaskDetail(taskId);
+	createComment: IKaneoApiService['createComment'] = async (taskId, content) => this.kaneoApiService.createComment(taskId, content);
+	createSubtask: IKaneoApiService['createSubtask'] = async (parentTaskId, title) => this.kaneoApiService.createSubtask(parentTaskId, title);
+	createRelation: IKaneoApiService['createRelation'] = async (sourceTaskId, targetTaskId, relationType) => this.kaneoApiService.createRelation(sourceTaskId, targetTaskId, relationType);
+	downloadTaskAttachments: IKaneoApiService['downloadTaskAttachments'] = async (taskId) => this.kaneoApiService.downloadTaskAttachments(taskId);
 }
 
 registerSingleton(IKaneoApiService, KaneoApiService, InstantiationType.Eager);

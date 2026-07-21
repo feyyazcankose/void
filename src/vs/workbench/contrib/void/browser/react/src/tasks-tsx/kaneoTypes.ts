@@ -25,6 +25,10 @@ export interface Project {
 	id: string
 	name: string
 	updatedAtMs: number
+	localPath: string | null
+	/** Lucide icon name from Kaneo (e.g. "Layout"). */
+	icon: string
+	iconColor: string
 	columns: Column[]
 }
 
@@ -37,6 +41,7 @@ export interface Issue {
 	columnIsStarted: boolean
 	columnIsFinal: boolean
 	updatedAtMs: number
+	number?: number | null
 }
 
 export interface TaskLabel {
@@ -55,6 +60,30 @@ export interface TaskRelation {
 	id: string
 	relationType: string
 	relatedTaskId: string
+	relatedTaskTitle?: string
+	relatedTaskNumber?: number | null
+	relatedColumnName?: string | null
+	direction?: 'outgoing' | 'incoming'
+}
+
+export interface TaskSubtask {
+	id: string
+	relationId: string
+	title: string
+	number: number | null
+	status: string | null
+	columnName: string | null
+}
+
+export interface TaskAttachment {
+	id: string
+	filename: string
+	mimeType: string
+	size: number
+	kind: string
+	surface: string
+	createdAtMs: number
+	url: string
 }
 
 export interface TaskDetailData {
@@ -64,13 +93,17 @@ export interface TaskDetailData {
 	projectName: string
 	title: string
 	description: string | null
+	status?: string | null
 	columnId: string | null
 	columnName: string | null
 	columnIsStarted: boolean
 	columnIsFinal: boolean
 	priority: string | null
 	dueDate: number | null
+	localPath: string | null
 	labels: TaskLabel[]
 	comments: TaskComment[]
+	subtasks: TaskSubtask[]
 	relations: TaskRelation[]
+	attachments: TaskAttachment[]
 }

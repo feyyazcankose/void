@@ -8,3 +8,5 @@
 // reasoning as tasksEditorToggleControl.ts's local VOID_TOGGLE_TASKS_ACTION_ID constant.
 export const VOID_OPEN_TASK_DETAIL_ACTION_ID = 'workbench.action.openVoidTaskDetail'
 export const VOID_TOGGLE_TASKS_ACTION_ID = 'workbench.action.toggleVoidTasks'
+/** Keep in sync with `browser/kaneoChatInjection.ts` (React must not import that file). */
+export const VOID_TRIGGER_AGENT_FROM_TASK_ACTION_ID = 'void.triggerAgentFromTask'

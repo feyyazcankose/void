@@ -56,6 +56,7 @@ import { IStorageService, StorageScope } from '../../../../../../../platform/sto
 import { OPT_OUT_KEY } from '../../../../common/storageKeys.js'
 import { IKaneoAuthService, KaneoAuthState } from '../../../../common/kaneoAuthService.js'
 import { IKaneoApiService } from '../../../../common/kaneoApiService.js'
+import { IKaneoWsService } from '../../../../common/kaneoWsService.js'
 
 
 // normally to do this you'd use a useEffect that calls .onDidChangeState(), but useEffect mounts too late and misses initial state changes
@@ -95,6 +96,13 @@ const _publishKaneoAuthState = (state: KaneoAuthState) => {
 	kaneoAuthStateListeners.forEach(l => l(kaneoAuthState))
 }
 
+let kaneoWsConnected = false
+const kaneoWsConnectionListeners: Set<(connected: boolean) => void> = new Set()
+const _publishKaneoWsConnected = (connected: boolean) => {
+	kaneoWsConnected = connected
+	kaneoWsConnectionListeners.forEach(l => l(kaneoWsConnected))
+}
+
 
 // must call this before you can use any of the hooks below
 // this should only be called ONCE! this is the only place you don't need to dispose onDidChange. If you use state.onDidChange anywhere else, make sure to dispose it!
@@ -114,9 +122,10 @@ export const _registerServices = (accessor: ServicesAccessor) => {
 		modelService: accessor.get(IModelService),
 		mcpService: accessor.get(IMCPService),
 		kaneoAuthService: accessor.get(IKaneoAuthService),
+		kaneoWsService: accessor.get(IKaneoWsService),
 	}
 
-	const { settingsStateService, chatThreadsStateService, refreshModelService, themeService, editCodeService, voidCommandBarService, modelService, mcpService, kaneoAuthService } = stateServices
+	const { settingsStateService, chatThreadsStateService, refreshModelService, themeService, editCodeService, voidCommandBarService, modelService, mcpService, kaneoAuthService, kaneoWsService } = stateServices
 
 
 
@@ -199,6 +208,15 @@ export const _registerServices = (accessor: ServicesAccessor) => {
 		})
 	)
 
+	void kaneoWsService.getConnectionState().then(connected => {
+		_publishKaneoWsConnected(connected)
+	})
+	disposables.push(
+		kaneoWsService.onConnectionStateChanged(connected => {
+			_publishKaneoWsConnected(connected)
+		})
+	)
+
 
 	return disposables
 }
@@ -255,6 +273,7 @@ const getReactAccessor = (accessor: ServicesAccessor) => {
 
 		IKaneoAuthService: accessor.get(IKaneoAuthService),
 		IKaneoApiService: accessor.get(IKaneoApiService),
+		IKaneoWsService: accessor.get(IKaneoWsService),
 
 	} as const
 	return reactAccessor
@@ -306,6 +325,17 @@ export const useKaneoAuthState = (): { state: KaneoAuthState; ready: boolean } =
 		return () => { kaneoAuthStateListeners.delete(listener) }
 	}, [ss])
 	return { state: s, ready }
+}
+
+export const useKaneoWsConnected = (): boolean => {
+	const [connected, setConnected] = useState(kaneoWsConnected)
+	useEffect(() => {
+		setConnected(kaneoWsConnected)
+		const listener = (c: boolean) => setConnected(c)
+		kaneoWsConnectionListeners.add(listener)
+		return () => { kaneoWsConnectionListeners.delete(listener) }
+	}, [])
+	return connected
 }
 
 export const useChatThreadsState = () => {

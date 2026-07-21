@@ -136,6 +136,7 @@ import { ClaudeBridgeMainService } from '../../workbench/contrib/void/electron-m
 import { MetricsMainService } from '../../workbench/contrib/void/electron-main/metricsMainService.js';
 import { VoidMainUpdateService } from '../../workbench/contrib/void/electron-main/voidUpdateMainService.js';
 import { LLMMessageChannel } from '../../workbench/contrib/void/electron-main/sendLLMMessageChannel.js';
+import { KaneoWsChannel } from '../../workbench/contrib/void/electron-main/kaneoWsChannel.js';
 import { VoidSCMService } from '../../workbench/contrib/void/electron-main/voidSCMMainService.js';
 import { IVoidSCMService } from '../../workbench/contrib/void/common/voidSCMTypes.js';
 import { MCPChannel } from '../../workbench/contrib/void/electron-main/mcpChannel.js';
@@ -1263,6 +1264,12 @@ export class CodeApplication extends Disposable {
 
 		const sendLLMMessageChannel = new LLMMessageChannel(accessor.get(IMetricsService));
 		mainProcessElectronServer.registerChannel('void-channel-llmMessage', sendLLMMessageChannel);
+
+		const kaneoWsChannel = new KaneoWsChannel(
+			accessor.get(IEncryptionMainService),
+			accessor.get(IApplicationStorageMainService),
+		);
+		mainProcessElectronServer.registerChannel('kaneo-ws', kaneoWsChannel);
 
 		// Void added this
 		const voidSCMChannel = ProxyChannel.fromService(accessor.get(IVoidSCMService), disposables);

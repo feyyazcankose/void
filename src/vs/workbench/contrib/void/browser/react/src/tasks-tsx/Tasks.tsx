@@ -4,12 +4,14 @@
  *--------------------------------------------------------------------------------------*/
 
 import '../styles.css'
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
-import { ProjectsSidebar } from './ProjectsSidebar.js'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { TasksBoard } from './TasksBoard.js'
 import { KaneoSignIn } from './KaneoSignIn.js'
 import { Issue, Project } from './kaneoTypes.js'
 import { useAccessor, useIsDark, useKaneoAuthState } from '../util/services.js'
+
+/** Light poll while Tasks pane is open — 2 small GETs per tick; skip when tab hidden. */
+const TASKS_REFRESH_MS = 20_000
 
 // Layout mirrors Settings.tsx exactly: a scrollable root (height:100%, overflow:auto, no
 // display:flex on it) containing a separate plain flex-row child with natural/min-height
@@ -20,6 +22,7 @@ export const Tasks = () => {
 	const accessor = useAccessor()
 	const kaneoAuth = accessor.get('IKaneoAuthService')
 	const kaneoApi = accessor.get('IKaneoApiService')
+	const kaneoWs = accessor.get('IKaneoWsService')
 	const { state: authState, ready: authReady } = useKaneoAuthState()
 
 	const loggedIn = authReady ? authState.loggedIn : undefined
@@ -30,6 +33,8 @@ export const Tasks = () => {
 	const [viewMode, setViewMode] = useState<'board' | 'list'>('board')
 	const [allIssues, setAllIssues] = useState<Issue[]>([])
 	const [loadError, setLoadError] = useState('')
+	const hasLoadedOnce = useRef(false)
+	const loadInFlight = useRef(false)
 
 	useEffect(() => {
 		if (!authReady || authState.loggedIn) {
@@ -39,6 +44,7 @@ export const Tasks = () => {
 		setAllIssues([])
 		setSelectedProjectId(undefined)
 		setLoadError('')
+		hasLoadedOnce.current = false
 	}, [authReady, authState.loggedIn])
 
 	const onSignedIn = useCallback(() => {
@@ -46,18 +52,30 @@ export const Tasks = () => {
 		void kaneoAuth.getAuthState()
 	}, [kaneoAuth])
 
-	const loadTasks = useCallback(async () => {
-		setLoadError('')
+	const loadTasks = useCallback(async (opts?: { silent?: boolean }) => {
+		if (loadInFlight.current) return
+		loadInFlight.current = true
+		const silent = opts?.silent === true
+		if (!silent) setLoadError('')
 		try {
 			const [kaneoProjects, kaneoTasks] = await Promise.all([
 				kaneoApi.getMyProjects(),
 				kaneoApi.getMyTasks(),
 			])
-			const mappedProjects: Project[] = kaneoProjects.map(p => ({ id: p.id, name: p.name, updatedAtMs: p.updatedAtMs, columns: p.columns }))
+			const mappedProjects: Project[] = kaneoProjects.map(p => ({
+				id: p.id,
+				name: p.name,
+				updatedAtMs: p.updatedAtMs,
+				localPath: p.localPath ?? null,
+				icon: p.icon || 'Layout',
+				iconColor: p.iconColor || '#64748b',
+				columns: p.columns,
+			}))
 			const mappedIssues: Issue[] = kaneoTasks.map(t => ({
 				id: t.id,
 				projectId: t.projectId,
 				title: t.title,
+				number: t.number,
 				columnId: t.columnId,
 				columnName: t.columnName,
 				columnIsStarted: t.columnIsStarted,
@@ -67,14 +85,51 @@ export const Tasks = () => {
 			setProjects(mappedProjects)
 			setAllIssues(mappedIssues)
 			setSelectedProjectId(prev => prev && mappedProjects.some(p => p.id === prev) ? prev : mappedProjects[0]?.id)
+			setLoadError('')
+			hasLoadedOnce.current = true
 		} catch (e) {
-			setLoadError(String(e))
+			// Background refresh: keep last good board; only surface errors on first load.
+			if (!silent || !hasLoadedOnce.current) {
+				setLoadError(String(e))
+			}
+		} finally {
+			loadInFlight.current = false
 		}
 	}, [kaneoApi])
 
 	useEffect(() => {
-		if (loggedIn) loadTasks()
+		if (loggedIn) void loadTasks()
 	}, [loggedIn, loadTasks])
+
+	// Poll + refresh when the desktop window becomes visible again.
+	useEffect(() => {
+		if (!loggedIn) return
+
+		const tick = () => {
+			if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
+			void loadTasks({ silent: true })
+		}
+
+		const intervalId = window.setInterval(tick, TASKS_REFRESH_MS)
+		const onVisibility = () => {
+			if (document.visibilityState === 'visible') tick()
+		}
+		document.addEventListener('visibilitychange', onVisibility)
+
+		return () => {
+			window.clearInterval(intervalId)
+			document.removeEventListener('visibilitychange', onVisibility)
+		}
+	}, [loggedIn, loadTasks])
+
+	// Status-change WS events (agent trigger) — refresh board immediately so columns stay in sync.
+	useEffect(() => {
+		if (!loggedIn) return
+		const sub = kaneoWs.onTaskStatusChanged(() => {
+			void loadTasks({ silent: true })
+		})
+		return () => sub.dispose()
+	}, [loggedIn, kaneoWs, loadTasks])
 
 	const selectedProject = useMemo(
 		() => projects.find(p => p.id === selectedProjectId),
@@ -85,12 +140,6 @@ export const Tasks = () => {
 		() => allIssues.filter(i => i.projectId === selectedProjectId),
 		[allIssues, selectedProjectId]
 	)
-
-	const issueCounts = useMemo(() => {
-		const counts: Record<string, number> = {}
-		for (const issue of allIssues) counts[issue.projectId] = (counts[issue.projectId] ?? 0) + 1
-		return counts
-	}, [allIssues])
 
 	// local-only for now — persisting a drag&drop column change back to Kaneo is a later
 	// phase (see mause-plans/01-mause-desktop-plans.md gap list)
@@ -113,18 +162,15 @@ export const Tasks = () => {
 		{loggedIn === false ? (
 			<KaneoSignIn initialBaseUrl={baseUrl} onSignedIn={onSignedIn} />
 		) : loggedIn === undefined ? (
-			<div className='p-8 text-void-fg-3 text-sm'>Yükleniyor...</div>
+			<div className='p-8 text-void-fg-3 text-sm'>Loading...</div>
 		) : loadError ? (
 			<div className='p-8 text-sm text-red-400'>{loadError}</div>
 		) : (
-			<div className='flex flex-col md:flex-row w-full bg-void-bg-2 text-void-fg-1' style={{ minHeight: '100%' }}>
-				<ProjectsSidebar
+			<div className='flex flex-col w-full bg-void-bg-2 text-void-fg-1' style={{ minHeight: '100%' }}>
+				<TasksBoard
 					projects={projects}
 					selectedProjectId={selectedProjectId}
 					onSelectProject={setSelectedProjectId}
-					issueCounts={issueCounts}
-				/>
-				<TasksBoard
 					columns={selectedProject?.columns ?? []}
 					issues={projectIssues}
 					viewMode={viewMode}

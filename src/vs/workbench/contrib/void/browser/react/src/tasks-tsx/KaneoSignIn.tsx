@@ -48,12 +48,12 @@ export const KaneoSignIn = ({ initialBaseUrl, onSignedIn }: { initialBaseUrl: st
 		}
 		if (result.status === 'denied') {
 			setStep('error')
-			setErrorMessage('Giriş isteği reddedildi.')
+			setErrorMessage('Sign-in request was denied.')
 			return
 		}
 		if (result.status === 'expired') {
 			setStep('error')
-			setErrorMessage('Kod süresi doldu, tekrar deneyin.')
+			setErrorMessage('Code expired. Please try again.')
 			return
 		}
 		setStep('error')
@@ -79,11 +79,11 @@ export const KaneoSignIn = ({ initialBaseUrl, onSignedIn }: { initialBaseUrl: st
 
 	return <div className='flex-1 flex items-center justify-center p-8'>
 		<div className='max-w-sm w-full flex flex-col gap-4'>
-			<div className='text-lg font-medium text-void-fg-1'>Task Management'a Giriş Yap</div>
+			<div className='text-lg font-medium text-void-fg-1'>Sign in to Task Management</div>
 
 			{step === 'form' || step === 'requesting' ? <>
 				<label className='flex flex-col gap-1.5 text-sm text-void-fg-2'>
-					Sunucu adresi
+					Server URL
 					<input
 						value={baseUrl}
 						onChange={e => setBaseUrl(e.target.value)}
@@ -96,20 +96,20 @@ export const KaneoSignIn = ({ initialBaseUrl, onSignedIn }: { initialBaseUrl: st
 					disabled={step === 'requesting' || !baseUrl.trim()}
 					className='bg-void-bg-1 hover:bg-void-bg-1-alt rounded-lg px-4 py-2 text-sm text-void-fg-1 disabled:opacity-50'
 				>
-					{step === 'requesting' ? 'Bağlanıyor...' : 'Giriş Yap'}
+					{step === 'requesting' ? 'Connecting...' : 'Sign in'}
 				</button>
 			</> : null}
 
 			{step === 'waiting' ? <div className='flex flex-col gap-3 text-sm text-void-fg-2'>
-				<div>Aşağıdaki adrese gidip bu kodu onaylayın:</div>
+				<div>Open this URL and approve the code:</div>
 				<div className='text-2xl font-mono tracking-widest text-void-fg-1 bg-void-bg-1 rounded-lg px-4 py-3 text-center'>{userCode}</div>
 				{verificationUri ? <a href={verificationUri} target='_blank' rel='noreferrer' className='text-void-fg-1 underline break-all'>{verificationUri}</a> : null}
-				<div className='text-void-fg-3'>Onaylandığında burası otomatik devam edecek...</div>
+				<div className='text-void-fg-3'>This window will continue automatically after approval...</div>
 			</div> : null}
 
 			{step === 'error' ? <div className='flex flex-col gap-3 text-sm'>
 				<div className='text-red-400'>{errorMessage}</div>
-				<button onClick={() => setStep('form')} className='bg-void-bg-1 hover:bg-void-bg-1-alt rounded-lg px-4 py-2 text-sm text-void-fg-1 self-start'>Tekrar dene</button>
+				<button onClick={() => setStep('form')} className='bg-void-bg-1 hover:bg-void-bg-1-alt rounded-lg px-4 py-2 text-sm text-void-fg-1 self-start'>Try again</button>
 			</div> : null}
 		</div>
 	</div>

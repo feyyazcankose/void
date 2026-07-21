@@ -280,7 +280,7 @@ export interface IChatThreadService {
 	editUserMessageAndStreamResponse({ userMessage, messageIdx, threadId }: { userMessage: string, messageIdx: number, threadId: string }): Promise<void>;
 
 	// call to add a message
-	addUserMessageAndStreamResponse({ userMessage, threadId }: { userMessage: string, threadId: string }): Promise<void>;
+	addUserMessageAndStreamResponse({ userMessage, threadId, _chatSelections }: { userMessage: string, threadId: string, _chatSelections?: StagingSelectionItem[] }): Promise<void>;
 
 	// approve/reject
 	approveLatestToolRequest(threadId: string): void;
