@@ -45,12 +45,15 @@ export const Tasks = () => {
 				kaneoApi.getMyProjects(),
 				kaneoApi.getMyTasks(),
 			])
-			const mappedProjects: Project[] = kaneoProjects.map(p => ({ id: p.id, name: p.name, updatedAtMs: p.updatedAtMs }))
+			const mappedProjects: Project[] = kaneoProjects.map(p => ({ id: p.id, name: p.name, updatedAtMs: p.updatedAtMs, columns: p.columns }))
 			const mappedIssues: Issue[] = kaneoTasks.map(t => ({
 				id: t.id,
 				projectId: t.projectId,
 				title: t.title,
-				status: t.status as IssueStatus,
+				columnId: t.columnId,
+				columnName: t.columnName,
+				columnIsStarted: t.columnIsStarted,
+				columnIsFinal: t.columnIsFinal,
 				updatedAtMs: t.updatedAtMs,
 			}))
 			setProjects(mappedProjects)
@@ -65,6 +68,11 @@ export const Tasks = () => {
 		if (loggedIn) loadTasks()
 	}, [loggedIn, loadTasks])
 
+	const selectedProject = useMemo(
+		() => projects.find(p => p.id === selectedProjectId),
+		[projects, selectedProjectId]
+	)
+
 	const projectIssues = useMemo(
 		() => allIssues.filter(i => i.projectId === selectedProjectId),
 		[allIssues, selectedProjectId]
@@ -76,10 +84,18 @@ export const Tasks = () => {
 		return counts
 	}, [allIssues])
 
-	// local-only for now — persisting a drag&drop status change back to Kaneo is a later
+	// local-only for now — persisting a drag&drop column change back to Kaneo is a later
 	// phase (see mause-plans/01-mause-desktop-plans.md gap list)
-	const onChangeStatus = (issueId: string, status: IssueStatus) => {
-		setAllIssues(prev => prev.map(i => i.id === issueId ? { ...i, status, updatedAtMs: Date.now() } : i))
+	const onChangeColumn = (issueId: string, columnId: string | null) => {
+		const column = selectedProject?.columns.find(c => c.id === columnId)
+		setAllIssues(prev => prev.map(i => i.id === issueId ? {
+			...i,
+			columnId,
+			columnName: column?.name ?? null,
+			columnIsStarted: column?.isStarted ?? false,
+			columnIsFinal: column?.isFinal ?? false,
+			updatedAtMs: Date.now(),
+		} : i))
 	}
 
 	return <div
@@ -101,10 +117,11 @@ export const Tasks = () => {
 					issueCounts={issueCounts}
 				/>
 				<TasksBoard
+					columns={selectedProject?.columns ?? []}
 					issues={projectIssues}
 					viewMode={viewMode}
 					onChangeViewMode={setViewMode}
-					onChangeStatus={onChangeStatus}
+					onChangeColumn={onChangeColumn}
 				/>
 			</div>
 		)}

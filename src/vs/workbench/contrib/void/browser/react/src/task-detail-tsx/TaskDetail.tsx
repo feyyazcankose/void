@@ -7,7 +7,7 @@ import '../styles.css'
 import React, { useEffect, useState } from 'react'
 import { ChevronDown, ChevronRight, Plus, Paperclip, ArrowUp, Flag, CalendarClock } from 'lucide-react'
 import { fromNow } from '../../../../../../../base/common/date.js'
-import { statusIcon, statusLabelTr, projectCode } from '../tasks-tsx/statusMeta.js'
+import { columnIcon, projectCode } from '../tasks-tsx/statusMeta.js'
 import { TaskDetailData } from '../tasks-tsx/kaneoTypes.js'
 import { useIsDark, useAccessor } from '../util/services.js'
 import { VOID_TOGGLE_TASKS_ACTION_ID } from '../tasks-tsx/commandIds.js'
@@ -146,7 +146,7 @@ export const TaskDetail = ({ issueId }: { issueId: string }) => {
 
 			{/* Right sidebar */}
 			<aside className='md:w-72 w-full p-6 shrink-0 flex flex-col gap-4'>
-				<SidebarRow icon={statusIcon(task.status, 15)} label={statusLabelTr(task.status)} bold />
+				<SidebarRow icon={columnIcon({ isStarted: task.columnIsStarted, isFinal: task.columnIsFinal }, 15)} label={task.columnName ?? 'Durum yok'} bold />
 				<SidebarRow icon={<Flag size={15} className='text-void-fg-3' />} label={task.priority ? task.priority : 'Öncelik yok'} />
 				{task.dueDate ? <SidebarRow icon={<CalendarClock size={15} className='text-void-fg-3' />} label={new Date(task.dueDate).toLocaleDateString()} /> : null}
 
