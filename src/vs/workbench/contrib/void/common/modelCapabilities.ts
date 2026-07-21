@@ -29,7 +29,8 @@ export const defaultProviderSettings = {
 		apiKey: '',
 	},
 	openAICompatible: {
-		endpoint: '',
+		// In-process Claude CLI bridge (started with the app — see claudeBridgeMainService.ts)
+		endpoint: 'http://127.0.0.1:8787/v1',
 		apiKey: '',
 		headersJSON: '{}', // default to {}
 	},

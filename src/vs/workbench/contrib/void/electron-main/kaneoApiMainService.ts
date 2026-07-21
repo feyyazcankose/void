@@ -30,7 +30,10 @@ export class KaneoApiMainService extends Disposable implements IKaneoApiService 
 		if (!token) throw new Error('Not signed in to Task Management.');
 
 		const res = await fetch(`${baseUrl}${path}`, {
-			headers: { Authorization: `Bearer ${token}` },
+			headers: {
+				Authorization: `Bearer ${token}`,
+				'User-Agent': 'Mause-Desktop/1.0',
+			},
 		});
 		if (res.status === 404) return null;
 		if (!res.ok) {

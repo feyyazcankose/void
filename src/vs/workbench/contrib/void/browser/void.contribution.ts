@@ -70,6 +70,9 @@ import './fileService.js'
 // register source control management
 import './voidSCMService.js'
 
+// Kaneo accounts menu (activity bar Accounts: name + Çıkış Yap)
+import './kaneoAccountsContribution.js'
+
 // ---------- common (unclear if these actually need to be imported, because they're already imported wherever they're used) ----------
 
 // llmMessage
@@ -89,3 +92,7 @@ import '../common/voidUpdateService.js'
 
 // model service
 import '../common/voidModelService.js'
+
+// Kaneo auth (renderer proxy → main kaneo-auth channel)
+import '../common/kaneoAuthService.js'
+import '../common/kaneoApiService.js'

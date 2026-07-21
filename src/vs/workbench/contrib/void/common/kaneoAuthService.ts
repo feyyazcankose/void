@@ -3,6 +3,7 @@
  *  Licensed under the Apache License, Version 2.0. See LICENSE.txt for more information.
  *--------------------------------------------------------------------------------------*/
 
+import { Emitter, Event } from '../../../../base/common/event.js';
 import { ProxyChannel } from '../../../../base/parts/ipc/common/ipc.js';
 import { registerSingleton, InstantiationType } from '../../../../platform/instantiation/common/extensions.js';
 import { createDecorator } from '../../../../platform/instantiation/common/instantiation.js';
@@ -30,10 +31,12 @@ export type KaneoDeviceTokenPollResult =
 export interface KaneoAuthState {
 	loggedIn: boolean;
 	baseUrl: string;
+	userName?: string;
 }
 
 export interface IKaneoAuthService {
 	readonly _serviceBrand: undefined;
+	readonly onDidChangeAuthState: Event<KaneoAuthState>;
 	getAuthState(): Promise<KaneoAuthState>;
 	setBaseUrl(url: string): Promise<void>;
 	requestDeviceCode(): Promise<KaneoDeviceCodeInfo>;
@@ -48,11 +51,15 @@ class KaneoAuthService implements IKaneoAuthService {
 
 	readonly _serviceBrand: undefined;
 	private readonly kaneoAuthService: IKaneoAuthService;
+	private readonly _onDidChangeAuthState = new Emitter<KaneoAuthState>();
+	readonly onDidChangeAuthState: Event<KaneoAuthState> = this._onDidChangeAuthState.event;
 
 	constructor(
 		@IMainProcessService mainProcessService: IMainProcessService, // (only usable on client side)
 	) {
 		this.kaneoAuthService = ProxyChannel.toService<IKaneoAuthService>(mainProcessService.getChannel('kaneo-auth'));
+		// Fan-out main→renderer IPC events to all local subscribers (Accounts menu + React).
+		this.kaneoAuthService.onDidChangeAuthState(state => this._onDidChangeAuthState.fire(state));
 	}
 
 	// anything transmitted over a channel must be async even if it looks like it doesn't have to be

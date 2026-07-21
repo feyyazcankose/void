@@ -9,7 +9,7 @@ import { ProjectsSidebar } from './ProjectsSidebar.js'
 import { TasksBoard } from './TasksBoard.js'
 import { KaneoSignIn } from './KaneoSignIn.js'
 import { Issue, Project } from './kaneoTypes.js'
-import { useAccessor, useIsDark } from '../util/services.js'
+import { useAccessor, useIsDark, useKaneoAuthState } from '../util/services.js'
 
 // Layout mirrors Settings.tsx exactly: a scrollable root (height:100%, overflow:auto, no
 // display:flex on it) containing a separate plain flex-row child with natural/min-height
@@ -20,9 +20,10 @@ export const Tasks = () => {
 	const accessor = useAccessor()
 	const kaneoAuth = accessor.get('IKaneoAuthService')
 	const kaneoApi = accessor.get('IKaneoApiService')
+	const { state: authState, ready: authReady } = useKaneoAuthState()
 
-	const [loggedIn, setLoggedIn] = useState<boolean | undefined>(undefined) // undefined = checking
-	const [baseUrl, setBaseUrl] = useState('http://localhost:1337')
+	const loggedIn = authReady ? authState.loggedIn : undefined
+	const baseUrl = authState.baseUrl || 'http://localhost:1337'
 
 	const [projects, setProjects] = useState<Project[]>([])
 	const [selectedProjectId, setSelectedProjectId] = useState<string | undefined>(undefined)
@@ -30,13 +31,20 @@ export const Tasks = () => {
 	const [allIssues, setAllIssues] = useState<Issue[]>([])
 	const [loadError, setLoadError] = useState('')
 
-	const checkAuth = useCallback(async () => {
-		const state = await kaneoAuth.getAuthState()
-		setBaseUrl(state.baseUrl)
-		setLoggedIn(state.loggedIn)
-	}, [kaneoAuth])
+	useEffect(() => {
+		if (!authReady || authState.loggedIn) {
+			return
+		}
+		setProjects([])
+		setAllIssues([])
+		setSelectedProjectId(undefined)
+		setLoadError('')
+	}, [authReady, authState.loggedIn])
 
-	useEffect(() => { checkAuth() }, [checkAuth])
+	const onSignedIn = useCallback(() => {
+		// pollDeviceToken already fires onDidChangeAuthState; this is a safety refresh
+		void kaneoAuth.getAuthState()
+	}, [kaneoAuth])
 
 	const loadTasks = useCallback(async () => {
 		setLoadError('')
@@ -103,7 +111,7 @@ export const Tasks = () => {
 		style={{ height: '100%', width: '100%', overflow: 'auto' }}
 	>
 		{loggedIn === false ? (
-			<KaneoSignIn initialBaseUrl={baseUrl} onSignedIn={checkAuth} />
+			<KaneoSignIn initialBaseUrl={baseUrl} onSignedIn={onSignedIn} />
 		) : loggedIn === undefined ? (
 			<div className='p-8 text-void-fg-3 text-sm'>Yükleniyor...</div>
 		) : loadError ? (

@@ -131,6 +131,8 @@ import { IKaneoAuthService } from '../../workbench/contrib/void/common/kaneoAuth
 import { KaneoAuthMainService } from '../../workbench/contrib/void/electron-main/kaneoAuthMainService.js';
 import { IKaneoApiService } from '../../workbench/contrib/void/common/kaneoApiService.js';
 import { KaneoApiMainService } from '../../workbench/contrib/void/electron-main/kaneoApiMainService.js';
+import { IClaudeBridgeService } from '../../workbench/contrib/void/common/claudeBridgeService.js';
+import { ClaudeBridgeMainService } from '../../workbench/contrib/void/electron-main/claudeBridgeMainService.js';
 import { MetricsMainService } from '../../workbench/contrib/void/electron-main/metricsMainService.js';
 import { VoidMainUpdateService } from '../../workbench/contrib/void/electron-main/voidUpdateMainService.js';
 import { LLMMessageChannel } from '../../workbench/contrib/void/electron-main/sendLLMMessageChannel.js';
@@ -594,6 +596,9 @@ export class CodeApplication extends Disposable {
 
 		// Auth Handler
 		appInstantiationService.invokeFunction(accessor => accessor.get(IProxyAuthService));
+
+		// Claude CLI → OpenAI-compatible bridge (in-process; no separate server.js needed)
+		appInstantiationService.invokeFunction(accessor => accessor.get(IClaudeBridgeService));
 
 		// Transient profiles handler
 		this._register(appInstantiationService.createInstance(UserDataProfilesHandler));
@@ -1111,6 +1116,7 @@ export class CodeApplication extends Disposable {
 		services.set(IVoidSCMService, new SyncDescriptor(VoidSCMService, undefined, false));
 		services.set(IKaneoAuthService, new SyncDescriptor(KaneoAuthMainService, undefined, false));
 		services.set(IKaneoApiService, new SyncDescriptor(KaneoApiMainService, undefined, false));
+		services.set(IClaudeBridgeService, new SyncDescriptor(ClaudeBridgeMainService, undefined, false));
 
 		// Default Extensions Profile Init
 		services.set(IExtensionsProfileScannerService, new SyncDescriptor(ExtensionsProfileScannerService, undefined, true));

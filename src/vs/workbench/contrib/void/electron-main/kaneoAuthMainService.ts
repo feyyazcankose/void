@@ -3,6 +3,7 @@
  *  Licensed under the Apache License, Version 2.0. See LICENSE.txt for more information.
  *--------------------------------------------------------------------------------------*/
 
+import { Emitter } from '../../../../base/common/event.js';
 import { Disposable } from '../../../../base/common/lifecycle.js';
 import { IEncryptionMainService } from '../../../../platform/encryption/common/encryptionService.js';
 import { IApplicationStorageMainService } from '../../../../platform/storage/electron-main/storageMainService.js';
@@ -14,9 +15,15 @@ import { clearStoredKaneoAccessToken, getStoredKaneoAccessToken, getStoredKaneoB
 // (an already-working client of the same backend flow) - kept 1:1 with that reference rather
 // than re-derived, since it's a proven, tested implementation of the exact same endpoints.
 const KANEO_DESKTOP_CLIENT_ID = 'mause-desktop';
+const KANEO_DESKTOP_USER_AGENT = 'Mause-Desktop/1.0';
+
+type KaneoSessionUser = { id: string; name?: string };
 
 export class KaneoAuthMainService extends Disposable implements IKaneoAuthService {
 	_serviceBrand: undefined;
+
+	private readonly _onDidChangeAuthState = this._register(new Emitter<KaneoAuthState>());
+	readonly onDidChangeAuthState = this._onDidChangeAuthState.event;
 
 	constructor(
 		@IEncryptionMainService private readonly _encryptionService: IEncryptionMainService,
@@ -30,18 +37,30 @@ export class KaneoAuthMainService extends Disposable implements IKaneoAuthServic
 		return getStoredKaneoBaseUrl(this._appStorage);
 	}
 
+	private _fire(state: KaneoAuthState): void {
+		this._onDidChangeAuthState.fire(state);
+	}
+
 	async getAuthState(): Promise<KaneoAuthState> {
 		await this._appStorage.whenReady;
 		const baseUrl = getStoredKaneoBaseUrl(this._appStorage);
 		const token = await getStoredKaneoAccessToken(this._encryptionService, this._appStorage);
-		if (!token) return { loggedIn: false, baseUrl };
-
-		const valid = await this._validateToken(baseUrl, token);
-		if (!valid) {
-			clearStoredKaneoAccessToken(this._appStorage);
+		if (!token) {
 			return { loggedIn: false, baseUrl };
 		}
-		return { loggedIn: true, baseUrl };
+
+		const user = await this._fetchSessionUser(baseUrl, token);
+		if (user === false) {
+			clearStoredKaneoAccessToken(this._appStorage);
+			const state: KaneoAuthState = { loggedIn: false, baseUrl };
+			this._fire(state);
+			return state;
+		}
+		return {
+			loggedIn: true,
+			baseUrl,
+			userName: user?.name,
+		};
 	}
 
 	async setBaseUrl(url: string): Promise<void> {
@@ -53,7 +72,10 @@ export class KaneoAuthMainService extends Disposable implements IKaneoAuthServic
 		const baseUrl = await this._baseUrl();
 		const res = await fetch(`${baseUrl}/api/auth/device/code`, {
 			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
+			headers: {
+				'Content-Type': 'application/json',
+				'User-Agent': KANEO_DESKTOP_USER_AGENT,
+			},
 			body: JSON.stringify({ client_id: KANEO_DESKTOP_CLIENT_ID }),
 		});
 		const body: any = await res.json().catch(() => ({}));
@@ -75,7 +97,10 @@ export class KaneoAuthMainService extends Disposable implements IKaneoAuthServic
 		try {
 			const res = await fetch(`${baseUrl}/api/auth/device/token`, {
 				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
+				headers: {
+					'Content-Type': 'application/json',
+					'User-Agent': KANEO_DESKTOP_USER_AGENT,
+				},
 				body: JSON.stringify({
 					grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
 					device_code: deviceCode,
@@ -86,6 +111,12 @@ export class KaneoAuthMainService extends Disposable implements IKaneoAuthServic
 
 			if (res.ok && typeof body.access_token === 'string') {
 				await setStoredKaneoAccessToken(this._encryptionService, this._appStorage, body.access_token);
+				const user = await this._fetchSessionUser(baseUrl, body.access_token);
+				this._fire({
+					loggedIn: true,
+					baseUrl,
+					userName: user && user !== false ? user.name : undefined,
+				});
 				return { status: 'complete' };
 			}
 
@@ -101,23 +132,49 @@ export class KaneoAuthMainService extends Disposable implements IKaneoAuthServic
 
 	async logout(): Promise<void> {
 		await this._appStorage.whenReady;
+		const baseUrl = getStoredKaneoBaseUrl(this._appStorage);
+		const token = await getStoredKaneoAccessToken(this._encryptionService, this._appStorage);
+		if (token) {
+			try {
+				await fetch(`${baseUrl}/api/auth/revoke-session`, {
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/json',
+						Authorization: `Bearer ${token}`,
+						'User-Agent': KANEO_DESKTOP_USER_AGENT,
+					},
+					body: JSON.stringify({ token }),
+				});
+			} catch {
+				// Always clear local token even if revoke fails (offline / already revoked).
+			}
+		}
 		clearStoredKaneoAccessToken(this._appStorage);
+		this._fire({ loggedIn: false, baseUrl });
 	}
 
 	// mirrors kaneo-task/packages/mcp/src/auth/auth-service.ts's validateAccessToken: fail-open
 	// on transient/unknown HTTP errors so a network hiccup doesn't force a full device re-login,
 	// only a confirmed 401 does.
-	private async _validateToken(baseUrl: string, token: string): Promise<boolean> {
+	// Returns: session user | false (401 invalid) | undefined (fail-open / unknown).
+	private async _fetchSessionUser(baseUrl: string, token: string): Promise<KaneoSessionUser | false | undefined> {
 		try {
 			const res = await fetch(`${baseUrl}/api/auth/get-session`, {
-				headers: { Authorization: `Bearer ${token}` },
+				headers: {
+					Authorization: `Bearer ${token}`,
+					'User-Agent': KANEO_DESKTOP_USER_AGENT,
+				},
 			});
 			if (res.status === 401) return false;
-			if (!res.ok) return true;
+			if (!res.ok) return undefined;
 			const data: any = await res.json().catch(() => null);
-			return Boolean(data?.user?.id);
+			if (!data?.user?.id) return undefined;
+			return {
+				id: String(data.user.id),
+				name: typeof data.user.name === 'string' ? data.user.name : undefined,
+			};
 		} catch {
-			return true;
+			return undefined;
 		}
 	}
 }

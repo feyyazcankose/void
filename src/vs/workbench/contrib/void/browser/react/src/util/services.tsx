@@ -54,7 +54,7 @@ import { IExtensionManagementService } from '../../../../../../../platform/exten
 import { IMCPService } from '../../../../common/mcpService.js';
 import { IStorageService, StorageScope } from '../../../../../../../platform/storage/common/storage.js'
 import { OPT_OUT_KEY } from '../../../../common/storageKeys.js'
-import { IKaneoAuthService } from '../../../../common/kaneoAuthService.js'
+import { IKaneoAuthService, KaneoAuthState } from '../../../../common/kaneoAuthService.js'
 import { IKaneoApiService } from '../../../../common/kaneoApiService.js'
 
 
@@ -85,6 +85,16 @@ const activeURIListeners: Set<(uri: URI | null) => void> = new Set();
 
 const mcpListeners: Set<() => void> = new Set()
 
+let kaneoAuthState: KaneoAuthState = { loggedIn: false, baseUrl: 'http://localhost:1337' }
+let kaneoAuthStateReady = false
+const kaneoAuthStateListeners: Set<(s: KaneoAuthState) => void> = new Set()
+
+const _publishKaneoAuthState = (state: KaneoAuthState) => {
+	kaneoAuthState = state
+	kaneoAuthStateReady = true
+	kaneoAuthStateListeners.forEach(l => l(kaneoAuthState))
+}
+
 
 // must call this before you can use any of the hooks below
 // this should only be called ONCE! this is the only place you don't need to dispose onDidChange. If you use state.onDidChange anywhere else, make sure to dispose it!
@@ -103,9 +113,10 @@ export const _registerServices = (accessor: ServicesAccessor) => {
 		voidCommandBarService: accessor.get(IVoidCommandBarService),
 		modelService: accessor.get(IModelService),
 		mcpService: accessor.get(IMCPService),
+		kaneoAuthService: accessor.get(IKaneoAuthService),
 	}
 
-	const { settingsStateService, chatThreadsStateService, refreshModelService, themeService, editCodeService, voidCommandBarService, modelService, mcpService } = stateServices
+	const { settingsStateService, chatThreadsStateService, refreshModelService, themeService, editCodeService, voidCommandBarService, modelService, mcpService, kaneoAuthService } = stateServices
 
 
 
@@ -175,6 +186,16 @@ export const _registerServices = (accessor: ServicesAccessor) => {
 	disposables.push(
 		mcpService.onDidChangeState(() => {
 			mcpListeners.forEach(l => l())
+		})
+	)
+
+	// Kaneo auth: subscribe before React mounts so logout from Accounts menu reaches Tasks pane
+	void kaneoAuthService.getAuthState().then(state => {
+		_publishKaneoAuthState(state)
+	})
+	disposables.push(
+		kaneoAuthService.onDidChangeAuthState(state => {
+			_publishKaneoAuthState(state)
 		})
 	)
 
@@ -269,6 +290,22 @@ export const useSettingsState = () => {
 		return () => { settingsStateListeners.delete(ss) }
 	}, [ss])
 	return s
+}
+
+export const useKaneoAuthState = (): { state: KaneoAuthState; ready: boolean } => {
+	const [s, ss] = useState(kaneoAuthState)
+	const [ready, setReady] = useState(kaneoAuthStateReady)
+	useEffect(() => {
+		ss(kaneoAuthState)
+		setReady(kaneoAuthStateReady)
+		const listener = (state: KaneoAuthState) => {
+			ss(state)
+			setReady(true)
+		}
+		kaneoAuthStateListeners.add(listener)
+		return () => { kaneoAuthStateListeners.delete(listener) }
+	}, [ss])
+	return { state: s, ready }
 }
 
 export const useChatThreadsState = () => {
