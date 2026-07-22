@@ -11,12 +11,21 @@
  * Void's OpenAI-Compatible provider can hit 127.0.0.1:8787 without a second process.
  *
  * Requires `claude auth login` once in a normal terminal (subscription, no API key).
+ *
+ * Claude is spawned with cwd = the focused/last-active window's workspace folder
+ * (or Kaneo "Local workspace path" from the prompt when present), so the CLI
+ * session is locked to the open project — not the Electron app's launch dir.
  */
 
 import { spawn } from 'child_process';
+import * as fs from 'fs';
 import * as http from 'http';
 import { Disposable } from '../../../../base/common/lifecycle.js';
+import { Schemas } from '../../../../base/common/network.js';
 import { ILogService } from '../../../../platform/log/common/log.js';
+import { IWindowsMainService } from '../../../../platform/windows/electron-main/windows.js';
+import { isSingleFolderWorkspaceIdentifier, isWorkspaceIdentifier } from '../../../../platform/workspace/common/workspace.js';
+import { IWorkspacesManagementMainService } from '../../../../platform/workspaces/electron-main/workspacesManagementMainService.js';
 import { CLAUDE_BRIDGE_ENDPOINT, CLAUDE_BRIDGE_PORT, IClaudeBridgeService } from '../common/claudeBridgeService.js';
 
 const MODELS = ['sonnet', 'opus', 'haiku'] as const;
@@ -64,7 +73,37 @@ function buildPrompt(messages: Array<{ role?: string; content?: unknown }> | und
 	return { systemPrompt: systemParts.join('\n\n'), prompt: turns.join('\n\n') };
 }
 
-function runClaude({ prompt, systemPrompt, model }: { prompt: string; systemPrompt: string; model: string | undefined }): Promise<string> {
+/** Kaneo task prompts include `- Local workspace path: /abs/path`. Prefer that when valid. */
+function extractKaneoLocalPath(prompt: string): string | undefined {
+	const m = prompt.match(/^- Local workspace path:\s*(.+)$/m);
+	if (!m) {
+		return undefined;
+	}
+	const p = m[1].trim();
+	if (!p || p.startsWith('(')) {
+		return undefined;
+	}
+	try {
+		if (fs.existsSync(p) && fs.statSync(p).isDirectory()) {
+			return p;
+		}
+	} catch {
+		// ignore
+	}
+	return undefined;
+}
+
+function runClaude({
+	prompt,
+	systemPrompt,
+	model,
+	cwd,
+}: {
+	prompt: string;
+	systemPrompt: string;
+	model: string | undefined;
+	cwd: string | undefined;
+}): Promise<string> {
 	return new Promise((resolve, reject) => {
 		const args = [
 			'-p', prompt,
@@ -77,7 +116,10 @@ function runClaude({ prompt, systemPrompt, model }: { prompt: string; systemProm
 			args.push('--system-prompt', systemPrompt);
 		}
 
-		const child = spawn(CLAUDE_BIN, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+		const child = spawn(CLAUDE_BIN, args, {
+			cwd: cwd || undefined,
+			stdio: ['ignore', 'pipe', 'pipe'],
+		});
 
 		let buf = '';
 		let stderr = '';
@@ -145,67 +187,6 @@ function* streamPieces(text: string): Generator<string> {
 	}
 }
 
-async function handleChatCompletions(req: http.IncomingMessage, res: http.ServerResponse, body: string): Promise<void> {
-	let parsed: { messages?: Array<{ role?: string; content?: unknown }>; model?: string; stream?: boolean };
-	try {
-		parsed = JSON.parse(body || '{}');
-	} catch {
-		res.writeHead(400, { 'Content-Type': 'application/json' });
-		res.end(JSON.stringify({ error: { message: 'invalid JSON body' } }));
-		return;
-	}
-
-	const { messages, model, stream } = parsed;
-	const { systemPrompt, prompt } = buildPrompt(messages);
-	const id = 'chatcmpl-' + Math.random().toString(36).slice(2);
-
-	let text: string;
-	try {
-		text = await runClaude({ prompt, systemPrompt, model });
-	} catch (err) {
-		const message = (err as Error)?.message || String(err);
-		if (stream) {
-			res.writeHead(200, {
-				'Content-Type': 'text/event-stream',
-				'Cache-Control': 'no-cache',
-				Connection: 'keep-alive',
-			});
-			sseChunk(res, id, model, { role: 'assistant', content: `[claude-cli error] ${message}` }, 'stop');
-			res.write('data: [DONE]\n\n');
-			res.end();
-		} else {
-			res.writeHead(200, { 'Content-Type': 'application/json' });
-			res.end(JSON.stringify({
-				id, object: 'chat.completion', created: Math.floor(Date.now() / 1000), model,
-				choices: [{ index: 0, message: { role: 'assistant', content: `[claude-cli error] ${message}` }, finish_reason: 'stop' }],
-			}));
-		}
-		return;
-	}
-
-	if (stream) {
-		res.writeHead(200, {
-			'Content-Type': 'text/event-stream',
-			'Cache-Control': 'no-cache',
-			Connection: 'keep-alive',
-		});
-		sseChunk(res, id, model, { role: 'assistant' });
-		for (const piece of streamPieces(text)) {
-			sseChunk(res, id, model, { content: piece });
-			await new Promise((r) => setTimeout(r, 12));
-		}
-		sseChunk(res, id, model, {}, 'stop');
-		res.write('data: [DONE]\n\n');
-		res.end();
-	} else {
-		res.writeHead(200, { 'Content-Type': 'application/json' });
-		res.end(JSON.stringify({
-			id, object: 'chat.completion', created: Math.floor(Date.now() / 1000), model,
-			choices: [{ index: 0, message: { role: 'assistant', content: text }, finish_reason: 'stop' }],
-		}));
-	}
-}
-
 function handleModels(_req: http.IncomingMessage, res: http.ServerResponse): void {
 	const now = Math.floor(Date.now() / 1000);
 	res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -230,10 +211,106 @@ export class ClaudeBridgeMainService extends Disposable implements IClaudeBridge
 
 	constructor(
 		@ILogService private readonly logService: ILogService,
+		@IWindowsMainService private readonly windowsMainService: IWindowsMainService,
+		@IWorkspacesManagementMainService private readonly workspacesManagementMainService: IWorkspacesManagementMainService,
 	) {
 		super();
 		this._start();
 		this._register({ dispose: () => this._stop() });
+	}
+
+	/** Prefer Kaneo path in prompt; else focused/last-active window's local folder. */
+	private async _resolveCwd(prompt: string): Promise<string | undefined> {
+		const fromPrompt = extractKaneoLocalPath(prompt);
+		if (fromPrompt) {
+			return fromPrompt;
+		}
+
+		const win = this.windowsMainService.getFocusedWindow()
+			?? this.windowsMainService.getLastActiveWindow();
+		const ws = win?.openedWorkspace;
+		if (!ws) {
+			return undefined;
+		}
+
+		if (isSingleFolderWorkspaceIdentifier(ws) && ws.uri.scheme === Schemas.file) {
+			return ws.uri.fsPath;
+		}
+
+		if (isWorkspaceIdentifier(ws) && ws.configPath.scheme === Schemas.file) {
+			try {
+				const resolved = await this.workspacesManagementMainService.resolveLocalWorkspace(ws.configPath);
+				const folder = resolved?.folders.find(f => f.uri.scheme === Schemas.file);
+				return folder?.uri.fsPath;
+			} catch (e) {
+				this.logService.warn(`[ClaudeBridge] resolveLocalWorkspace failed: ${(e as Error)?.message || e}`);
+			}
+		}
+
+		return undefined;
+	}
+
+	private async _handleChatCompletions(req: http.IncomingMessage, res: http.ServerResponse, body: string): Promise<void> {
+		let parsed: { messages?: Array<{ role?: string; content?: unknown }>; model?: string; stream?: boolean };
+		try {
+			parsed = JSON.parse(body || '{}');
+		} catch {
+			res.writeHead(400, { 'Content-Type': 'application/json' });
+			res.end(JSON.stringify({ error: { message: 'invalid JSON body' } }));
+			return;
+		}
+
+		const { messages, model, stream } = parsed;
+		const { systemPrompt, prompt } = buildPrompt(messages);
+		const id = 'chatcmpl-' + Math.random().toString(36).slice(2);
+		const cwd = await this._resolveCwd(`${systemPrompt}\n${prompt}`);
+		this.logService.info(`[ClaudeBridge] spawning claude cwd=${cwd ?? '(inherit)'}`);
+
+		let text: string;
+		try {
+			text = await runClaude({ prompt, systemPrompt, model, cwd });
+		} catch (err) {
+			const message = (err as Error)?.message || String(err);
+			if (stream) {
+				res.writeHead(200, {
+					'Content-Type': 'text/event-stream',
+					'Cache-Control': 'no-cache',
+					Connection: 'keep-alive',
+				});
+				sseChunk(res, id, model, { role: 'assistant', content: `[claude-cli error] ${message}` }, 'stop');
+				res.write('data: [DONE]\n\n');
+				res.end();
+			} else {
+				res.writeHead(200, { 'Content-Type': 'application/json' });
+				res.end(JSON.stringify({
+					id, object: 'chat.completion', created: Math.floor(Date.now() / 1000), model,
+					choices: [{ index: 0, message: { role: 'assistant', content: `[claude-cli error] ${message}` }, finish_reason: 'stop' }],
+				}));
+			}
+			return;
+		}
+
+		if (stream) {
+			res.writeHead(200, {
+				'Content-Type': 'text/event-stream',
+				'Cache-Control': 'no-cache',
+				Connection: 'keep-alive',
+			});
+			sseChunk(res, id, model, { role: 'assistant' });
+			for (const piece of streamPieces(text)) {
+				sseChunk(res, id, model, { content: piece });
+				await new Promise((r) => setTimeout(r, 12));
+			}
+			sseChunk(res, id, model, {}, 'stop');
+			res.write('data: [DONE]\n\n');
+			res.end();
+		} else {
+			res.writeHead(200, { 'Content-Type': 'application/json' });
+			res.end(JSON.stringify({
+				id, object: 'chat.completion', created: Math.floor(Date.now() / 1000), model,
+				choices: [{ index: 0, message: { role: 'assistant', content: text }, finish_reason: 'stop' }],
+			}));
+		}
 	}
 
 	private _start(): void {
@@ -244,7 +321,7 @@ export class ClaudeBridgeMainService extends Disposable implements IClaudeBridge
 			if (req.method === 'POST' && req.url?.startsWith('/v1/chat/completions')) {
 				let body = '';
 				req.on('data', (c) => { body += c; });
-				req.on('end', () => { void handleChatCompletions(req, res, body); });
+				req.on('end', () => { void this._handleChatCompletions(req, res, body); });
 				return;
 			}
 			res.writeHead(404, { 'Content-Type': 'application/json' });

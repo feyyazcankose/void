@@ -86,7 +86,7 @@ export function buildTaskAgentPrompt(
 	const branch = opts?.activeBranch?.trim() || null;
 
 	return [
-		`You are working on a Kaneo task assigned to me. Start implementing it now.`,
+		`Start implementing it now.`,
 		``,
 		`## Task`,
 		`- ID: ${task.id}`,
