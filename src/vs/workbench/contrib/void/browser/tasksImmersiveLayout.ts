@@ -9,6 +9,8 @@ import { IWorkbenchContribution, registerWorkbenchContribution2, WorkbenchPhase 
 import { IEditorService } from '../../../services/editor/common/editorService.js';
 import { IWorkbenchLayoutService, Parts } from '../../../services/layout/browser/layoutService.js';
 
+const TASKS_IMMERSIVE_CLASS = 'void-tasks-immersive';
+
 /** Left chrome + bottom panel. Chat (AUXILIARYBAR) is left alone so it stays open if open. */
 const IMMERSIVE_PARTS = [
 	Parts.ACTIVITYBAR_PART,
@@ -34,8 +36,7 @@ export function isTasksModeResource(resource: URI | undefined | null): boolean {
 
 /**
  * Hide left workbench chrome (activity bar, explorer) and the bottom panel.
- * Chat/auxiliary bar is not touched. First call snapshots prior visibility
- * so exit can restore it; later calls re-apply hide without overwriting snapshot.
+ * Also hides the editor tab strip via CSS class. Chat/auxiliary bar is not touched.
  */
 export function enterTasksImmersive(layoutService: IWorkbenchLayoutService): void {
 	if (!snapshot) {
@@ -49,12 +50,16 @@ export function enterTasksImmersive(layoutService: IWorkbenchLayoutService): voi
 	for (const part of IMMERSIVE_PARTS) {
 		layoutService.setPartHidden(true, part);
 	}
+
+	layoutService.mainContainer.classList.add(TASKS_IMMERSIVE_CLASS);
 }
 
 /**
  * Restore chrome visibility from the enter-time snapshot. No-op if not immersive.
  */
 export function exitTasksImmersive(layoutService: IWorkbenchLayoutService): void {
+	layoutService.mainContainer.classList.remove(TASKS_IMMERSIVE_CLASS);
+
 	if (!snapshot) {
 		return;
 	}

@@ -289,7 +289,7 @@ export class StorageMainService extends Disposable implements IStorageMainServic
 
 //#region Application Main Storage Service (intent: use application storage from main process)
 
-export const IApplicationStorageMainService = createDecorator<IStorageMainService>('applicationStorageMainService');
+export const IApplicationStorageMainService = createDecorator<IApplicationStorageMainService>('applicationStorageMainService');
 
 /**
  * A specialized `IStorageService` interface that only allows

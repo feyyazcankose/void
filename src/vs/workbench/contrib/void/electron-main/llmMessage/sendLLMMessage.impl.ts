@@ -14,10 +14,11 @@ import { Tool as GeminiTool, FunctionDeclaration, GoogleGenAI, ThinkingConfig, S
 import { GoogleAuth } from 'google-auth-library'
 /* eslint-enable */
 
-import { AnthropicLLMChatMessage, GeminiLLMChatMessage, LLMChatMessage, LLMFIMMessage, ModelListParams, OllamaModelResponse, OnError, OnFinalMessage, OnText, RawToolCallObj, RawToolParamsObj } from '../../common/sendLLMMessageTypes.js';
+import { AnthropicLLMChatMessage, GeminiLLMChatMessage, LLMChatMessage, LLMFIMMessage, ModelListParams, OllamaModelResponse, OnCliToolEvent, OnError, OnFinalMessage, OnText, RawToolCallObj, RawToolParamsObj } from '../../common/sendLLMMessageTypes.js';
 import { ChatMode, displayInfoOfProviderName, ModelSelectionOptions, OverridesOfModel, ProviderName, SettingsOfProvider } from '../../common/voidSettingsTypes.js';
 import { getSendableReasoningInfo, getModelCapabilities, getProviderCapabilities, defaultProviderSettings, getReservedOutputTokenSpace } from '../../common/modelCapabilities.js';
 import { extractReasoningWrapper, extractXMLToolsWrapper } from './extractGrammar.js';
+import { extractVoidCliToolsWrapper } from './extractVoidCliTools.js';
 import { availableTools, InternalToolInfo } from '../../common/prompt/prompts.js';
 import { generateUuid } from '../../../../../base/common/uuid.js';
 
@@ -36,6 +37,7 @@ type InternalCommonMessageParams = {
 	onText: OnText;
 	onFinalMessage: OnFinalMessage;
 	onError: OnError;
+	onCliToolEvent?: OnCliToolEvent;
 	providerName: ProviderName;
 	settingsOfProvider: SettingsOfProvider;
 	modelSelectionOptions: ModelSelectionOptions | undefined;
@@ -270,7 +272,7 @@ const rawToolCallObjOfAnthropicParams = (toolBlock: Anthropic.Messages.ToolUseBl
 // ------------ OPENAI-COMPATIBLE ------------
 
 
-const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onError, settingsOfProvider, modelSelectionOptions, modelName: modelName_, _setAborter, providerName, chatMode, separateSystemMessage, overridesOfModel, mcpTools }: SendChatParams_Internal) => {
+const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onError, onCliToolEvent, settingsOfProvider, modelSelectionOptions, modelName: modelName_, _setAborter, providerName, chatMode, separateSystemMessage, overridesOfModel, mcpTools }: SendChatParams_Internal) => {
 	const {
 		modelName,
 		specialToolFormat,
@@ -326,6 +328,13 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 		onFinalMessage = newOnFinalMessage
 	}
 
+	// Claude CLI bridge embeds tool_use as content sentinels — wrap last (= first to see raw stream)
+	{
+		const { newOnText, newOnFinalMessage } = extractVoidCliToolsWrapper(onText, onFinalMessage, onCliToolEvent)
+		onText = newOnText
+		onFinalMessage = newOnFinalMessage
+	}
+
 	let fullReasoningSoFar = ''
 	let fullTextSoFar = ''
 
@@ -370,7 +379,7 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 				})
 
 			}
-			// on final
+			// on final — empty raw content is OK if we only streamed CLI tool sentinels (wrapper may still flush)
 			if (!fullTextSoFar && !fullReasoningSoFar && !toolName) {
 				onError({ message: 'Void: Response from model was empty.', fullError: null })
 			}

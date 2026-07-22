@@ -18,6 +18,7 @@ import { URI } from '../../../../base/common/uri.js';
 import { EndOfLinePreference } from '../../../../editor/common/model.js';
 import { ToolName } from '../common/toolsServiceTypes.js';
 import { IMCPService } from '../common/mcpService.js';
+import { isVoidCliDisplayOnlyTool } from '../common/mapClaudeCliToolToVoid.js';
 
 export const EMPTY_MESSAGE = '(empty message)'
 
@@ -616,6 +617,8 @@ class ConvertToLLMMessageService extends Disposable implements IConvertToLLMMess
 				})
 			}
 			else if (m.role === 'tool') {
+				// Claude CLI display-only rows — never re-send to the model
+				if (isVoidCliDisplayOnlyTool(m.rawParams)) continue
 				simpleLLMMessages.push({
 					role: m.role,
 					content: m.content,

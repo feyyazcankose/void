@@ -6,6 +6,7 @@
 import { InternalToolInfo } from './prompt/prompts.js'
 import { ToolName, ToolParamName } from './toolsServiceTypes.js'
 import { ChatMode, ModelSelection, ModelSelectionOptions, OverridesOfModel, ProviderName, RefreshableProviderName, SettingsOfProvider } from './voidSettingsTypes.js'
+import { VoidCliToolEvent } from './voidCliToolProtocol.js'
 
 
 export const errorDetails = (fullError: Error | null): string | null => {
@@ -95,6 +96,7 @@ export type OnText = (p: { fullText: string; fullReasoning: string; toolCall?: R
 export type OnFinalMessage = (p: { fullText: string; fullReasoning: string; toolCall?: RawToolCallObj; anthropicReasoning: AnthropicReasoning[] | null }) => void // id is tool_use_id
 export type OnError = (p: { message: string; fullError: Error | null }) => void
 export type OnAbort = () => void
+export type OnCliToolEvent = (e: VoidCliToolEvent) => void
 export type AbortRef = { current: (() => void) | null }
 
 
@@ -114,6 +116,7 @@ export type ServiceSendLLMMessageParams = {
 	onText: OnText;
 	onFinalMessage: OnFinalMessage;
 	onError: OnError;
+	onCliToolEvent?: OnCliToolEvent;
 	logging: { loggingName: string, loggingExtras?: { [k: string]: any } };
 	modelSelection: ModelSelection | null;
 	modelSelectionOptions: ModelSelectionOptions | undefined;
@@ -126,6 +129,7 @@ export type SendLLMMessageParams = {
 	onText: OnText;
 	onFinalMessage: OnFinalMessage;
 	onError: OnError;
+	onCliToolEvent?: OnCliToolEvent;
 	logging: { loggingName: string, loggingExtras?: { [k: string]: any } };
 	abortRef: AbortRef;
 
@@ -140,7 +144,7 @@ export type SendLLMMessageParams = {
 
 
 // can't send functions across a proxy, use listeners instead
-export type BlockedMainLLMMessageParams = 'onText' | 'onFinalMessage' | 'onError' | 'abortRef'
+export type BlockedMainLLMMessageParams = 'onText' | 'onFinalMessage' | 'onError' | 'onCliToolEvent' | 'abortRef'
 export type MainSendLLMMessageParams = Omit<SendLLMMessageParams, BlockedMainLLMMessageParams> & { requestId: string } & SendLLMType
 
 export type MainLLMMessageAbortParams = { requestId: string }
@@ -148,6 +152,7 @@ export type MainLLMMessageAbortParams = { requestId: string }
 export type EventLLMMessageOnTextParams = Parameters<OnText>[0] & { requestId: string }
 export type EventLLMMessageOnFinalMessageParams = Parameters<OnFinalMessage>[0] & { requestId: string }
 export type EventLLMMessageOnErrorParams = Parameters<OnError>[0] & { requestId: string }
+export type EventLLMMessageOnCliToolEventParams = VoidCliToolEvent & { requestId: string }
 
 // service -> main -> internal -> event (back to main)
 // (browser)

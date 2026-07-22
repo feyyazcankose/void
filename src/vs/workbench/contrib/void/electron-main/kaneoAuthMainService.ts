@@ -115,7 +115,7 @@ export class KaneoAuthMainService extends Disposable implements IKaneoAuthServic
 				this._fire({
 					loggedIn: true,
 					baseUrl,
-					userName: user && user !== false ? user.name : undefined,
+					userName: user && typeof user === 'object' ? user.name : undefined,
 				});
 				return { status: 'complete' };
 			}

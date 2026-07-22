@@ -23,45 +23,43 @@
 	background-color: var(--vscode-void-redBG);
 }
 
-
 /* Renamed from void-watermark-button to void-openfolder-button */
 .void-openfolder-button {
-    padding: 8px 20px;
-    background-color: #306dce;
-    color: white;
-    border: none;
-    border-radius: 4px;
-    outline: none !important;
+	padding: 8px 20px;
+	background-color: #306dce;
+	color: white;
+	border: none;
+	border-radius: 4px;
+	outline: none !important;
 	box-shadow: none !important;
 	cursor: pointer;
 	transition: background-color 0.2s ease;
 }
 .void-openfolder-button:hover {
-    background-color: #2563eb;
+	background-color: #2563eb;
 }
 .void-openfolder-button:active {
-    background-color: #2563eb;
+	background-color: #2563eb;
 }
 
 /* Added for Open SSH button with slightly darker color */
 .void-openssh-button {
-    padding: 8px 20px;
-    background-color: #656565; /* Slightly darker than the #5a5a5a in the TS file */
-    color: white;
-    border: none;
-    border-radius: 4px;
-    outline: none !important;
+	padding: 8px 20px;
+	background-color: #656565; /* Slightly darker than the #5a5a5a in the TS file */
+	color: white;
+	border: none;
+	border-radius: 4px;
+	outline: none !important;
 	box-shadow: none !important;
-    cursor: pointer;
-    transition: background-color 0.2s ease;
+	cursor: pointer;
+	transition: background-color 0.2s ease;
 }
 .void-openssh-button:hover {
-    background-color: #474747; /* Darker on hover */
+	background-color: #474747; /* Darker on hover */
 }
 .void-openssh-button:active {
-    background-color: #474747;
+	background-color: #474747;
 }
-
 
 .void-settings-watermark-button {
 	margin: 8px 0;
@@ -201,4 +199,13 @@
 .void-scrollable-element::-webkit-scrollbar-corner,
 .void-scrollable-element *::-webkit-scrollbar-corner {
 	background-color: var(--void-bg-3) !important;
+}
+
+/* Tasks immersive: hide editor tab strip ("Void's Tasks" etc.) */
+.monaco-workbench.void-tasks-immersive
+	.part.editor
+	> .content
+	.editor-group-container
+	> .title.tabs {
+	display: none !important;
 }

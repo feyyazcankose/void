@@ -15,6 +15,9 @@
  * Claude is spawned with cwd = the focused/last-active window's workspace folder
  * (or Kaneo "Local workspace path" from the prompt when present), so the CLI
  * session is locked to the open project — not the Electron app's launch dir.
+ *
+ * Streaming uses `--include-partial-messages` and forwards text_delta events to
+ * the OpenAI-compatible SSE response as they arrive (no wait-for-full-result).
  */
 
 import { spawn } from 'child_process';
@@ -27,6 +30,7 @@ import { IWindowsMainService } from '../../../../platform/windows/electron-main/
 import { isSingleFolderWorkspaceIdentifier, isWorkspaceIdentifier } from '../../../../platform/workspace/common/workspace.js';
 import { IWorkspacesManagementMainService } from '../../../../platform/workspaces/electron-main/workspacesManagementMainService.js';
 import { CLAUDE_BRIDGE_ENDPOINT, CLAUDE_BRIDGE_PORT, IClaudeBridgeService } from '../common/claudeBridgeService.js';
+import { encodeVoidCliToolEvent } from '../common/voidCliToolProtocol.js';
 
 const MODELS = ['sonnet', 'opus', 'haiku'] as const;
 const CLAUDE_BIN = process.env.CLAUDE_BIN || 'claude';
@@ -93,23 +97,69 @@ function extractKaneoLocalPath(prompt: string): string | undefined {
 	return undefined;
 }
 
+function extractTextDelta(evt: unknown): string | undefined {
+	const e = evt as {
+		type?: string;
+		event?: { type?: string; delta?: { type?: string; text?: string } };
+	};
+	if (e?.type === 'stream_event' && e.event?.type === 'content_block_delta' && e.event.delta?.type === 'text_delta') {
+		return e.event.delta.text || undefined;
+	}
+	return undefined;
+}
+
+/** Encode Claude CLI tool_use blocks as content sentinels for the chat tool-row UI. */
+function extractToolSentinels(evt: unknown): string | undefined {
+	const e = evt as {
+		type?: string;
+		message?: { content?: Array<{ type?: string; name?: string; input?: Record<string, unknown> }> };
+	};
+	if (e?.type !== 'assistant' || !Array.isArray(e.message?.content)) {
+		return undefined;
+	}
+	const parts: string[] = [];
+	for (const block of e.message!.content!) {
+		if (block.type !== 'tool_use' || !block.name) {
+			continue;
+		}
+		parts.push(encodeVoidCliToolEvent({
+			name: block.name,
+			input: block.input && typeof block.input === 'object' ? block.input : {},
+		}));
+	}
+	return parts.length ? parts.join('') : undefined;
+}
+
+/**
+ * Spawn Claude CLI (subscription / claude auth — no API key).
+ * With --include-partial-messages, text_delta events are forwarded live via onDelta.
+ * tool_use events are forwarded as void_cli_tool sentinels (not prose).
+ */
 function runClaude({
 	prompt,
 	systemPrompt,
 	model,
 	cwd,
+	onDelta,
 }: {
 	prompt: string;
 	systemPrompt: string;
 	model: string | undefined;
 	cwd: string | undefined;
+	onDelta?: (text: string) => void;
 }): Promise<string> {
 	return new Promise((resolve, reject) => {
 		const args = [
 			'-p', prompt,
 			'--output-format', 'stream-json',
 			'--verbose',
+			'--include-partial-messages',
 			'--no-session-persistence',
+			// Unattended Kaneo/agent runs: allow edits & tools without interactive approval
+			'--permission-mode', 'bypassPermissions',
+			// Ignore user MCP configs (e.g. ClickUp needs-auth) — Kaneo task is already in the prompt
+			'--strict-mcp-config',
+			'--mcp-config', '{"mcpServers":{}}',
 			'--model', mapModel(model),
 		];
 		if (systemPrompt) {
@@ -123,6 +173,7 @@ function runClaude({
 
 		let buf = '';
 		let stderr = '';
+		let streamed = '';
 		let finalText: string | null = null;
 		let isError = false;
 
@@ -137,8 +188,17 @@ function runClaude({
 				}
 				try {
 					const evt = JSON.parse(line);
+					const toolSentinel = extractToolSentinels(evt);
+					if (toolSentinel) {
+						onDelta?.(toolSentinel);
+					}
+					const delta = extractTextDelta(evt);
+					if (delta) {
+						streamed += delta;
+						onDelta?.(delta);
+					}
 					if (evt.type === 'result') {
-						finalText = evt.result ?? '';
+						finalText = evt.result ?? streamed;
 						isError = !!evt.is_error;
 					}
 				} catch {
@@ -150,12 +210,13 @@ function runClaude({
 
 		child.on('error', (err) => reject(err));
 		child.on('close', () => {
-			if (finalText === null) {
+			const text = finalText ?? (streamed || null);
+			if (text === null) {
 				reject(new Error(stderr || 'claude CLI produced no result'));
 			} else if (isError) {
-				reject(new Error(finalText));
+				reject(new Error(text));
 			} else {
-				resolve(finalText);
+				resolve(text);
 			}
 		});
 	});
@@ -170,21 +231,6 @@ function sseChunk(res: http.ServerResponse, id: string, model: string | undefine
 		choices: [{ index: 0, delta, finish_reason: finishReason ?? null }],
 	};
 	res.write(`data: ${JSON.stringify(payload)}\n\n`);
-}
-
-function* streamPieces(text: string): Generator<string> {
-	const words = text.split(/(\s+)/);
-	let buf = '';
-	for (const w of words) {
-		buf += w;
-		if (buf.length >= 6) {
-			yield buf;
-			buf = '';
-		}
-	}
-	if (buf) {
-		yield buf;
-	}
 }
 
 function handleModels(_req: http.IncomingMessage, res: http.ServerResponse): void {
@@ -264,31 +310,7 @@ export class ClaudeBridgeMainService extends Disposable implements IClaudeBridge
 		const { systemPrompt, prompt } = buildPrompt(messages);
 		const id = 'chatcmpl-' + Math.random().toString(36).slice(2);
 		const cwd = await this._resolveCwd(`${systemPrompt}\n${prompt}`);
-		this.logService.info(`[ClaudeBridge] spawning claude cwd=${cwd ?? '(inherit)'}`);
-
-		let text: string;
-		try {
-			text = await runClaude({ prompt, systemPrompt, model, cwd });
-		} catch (err) {
-			const message = (err as Error)?.message || String(err);
-			if (stream) {
-				res.writeHead(200, {
-					'Content-Type': 'text/event-stream',
-					'Cache-Control': 'no-cache',
-					Connection: 'keep-alive',
-				});
-				sseChunk(res, id, model, { role: 'assistant', content: `[claude-cli error] ${message}` }, 'stop');
-				res.write('data: [DONE]\n\n');
-				res.end();
-			} else {
-				res.writeHead(200, { 'Content-Type': 'application/json' });
-				res.end(JSON.stringify({
-					id, object: 'chat.completion', created: Math.floor(Date.now() / 1000), model,
-					choices: [{ index: 0, message: { role: 'assistant', content: `[claude-cli error] ${message}` }, finish_reason: 'stop' }],
-				}));
-			}
-			return;
-		}
+		this.logService.info(`[ClaudeBridge] spawning claude cwd=${cwd ?? '(inherit)'} stream=${!!stream}`);
 
 		if (stream) {
 			res.writeHead(200, {
@@ -297,18 +319,48 @@ export class ClaudeBridgeMainService extends Disposable implements IClaudeBridge
 				Connection: 'keep-alive',
 			});
 			sseChunk(res, id, model, { role: 'assistant' });
-			for (const piece of streamPieces(text)) {
-				sseChunk(res, id, model, { content: piece });
-				await new Promise((r) => setTimeout(r, 12));
+
+			try {
+				await runClaude({
+					prompt,
+					systemPrompt,
+					model,
+					cwd,
+					onDelta: (piece) => {
+						if (!res.writableEnded) {
+							sseChunk(res, id, model, { content: piece });
+						}
+					},
+				});
+				if (!res.writableEnded) {
+					sseChunk(res, id, model, {}, 'stop');
+					res.write('data: [DONE]\n\n');
+					res.end();
+				}
+			} catch (err) {
+				const message = (err as Error)?.message || String(err);
+				if (!res.writableEnded) {
+					sseChunk(res, id, model, { content: `\n[claude-cli error] ${message}` }, 'stop');
+					res.write('data: [DONE]\n\n');
+					res.end();
+				}
 			}
-			sseChunk(res, id, model, {}, 'stop');
-			res.write('data: [DONE]\n\n');
-			res.end();
-		} else {
+			return;
+		}
+
+		try {
+			const text = await runClaude({ prompt, systemPrompt, model, cwd });
 			res.writeHead(200, { 'Content-Type': 'application/json' });
 			res.end(JSON.stringify({
 				id, object: 'chat.completion', created: Math.floor(Date.now() / 1000), model,
 				choices: [{ index: 0, message: { role: 'assistant', content: text }, finish_reason: 'stop' }],
+			}));
+		} catch (err) {
+			const message = (err as Error)?.message || String(err);
+			res.writeHead(200, { 'Content-Type': 'application/json' });
+			res.end(JSON.stringify({
+				id, object: 'chat.completion', created: Math.floor(Date.now() / 1000), model,
+				choices: [{ index: 0, message: { role: 'assistant', content: `[claude-cli error] ${message}` }, finish_reason: 'stop' }],
 			}));
 		}
 	}

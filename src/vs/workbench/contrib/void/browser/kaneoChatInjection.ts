@@ -48,85 +48,25 @@ function isTextishAttachment(att: KaneoDownloadedAttachment): boolean {
 export function buildTaskAgentPrompt(
 	task: KaneoTaskDetail,
 	downloaded: KaneoDownloadedAttachment[] = [],
-	opts?: { activeBranch?: string | null },
+	_opts?: { activeBranch?: string | null },
 ): string {
-	const code = `${task.projectName}-${task.number ?? '?'}`;
-	const labels = task.labels.length
-		? task.labels.map(l => l.name).join(', ')
-		: '(none)';
-	const due = task.dueDate
-		? new Date(task.dueDate).toISOString().slice(0, 10)
-		: '(none)';
-	const comments = task.comments.length
-		? task.comments
-			.map(c => `- ${c.authorName} (${new Date(c.createdAtMs).toISOString()}): ${c.content}`)
-			.join('\n')
-		: '(none)';
-	const relations = task.relations.length
-		? task.relations
-			.map(r => {
-				const title = (r as { relatedTaskTitle?: string }).relatedTaskTitle ?? r.relatedTaskId;
-				const num = (r as { relatedTaskNumber?: number | null }).relatedTaskNumber;
-				return `- ${r.relationType}: ${title}${num != null ? ` (#${num})` : ''} [${r.relatedTaskId}]`;
-			})
-			.join('\n')
-		: '(none)';
-	const subtasks = (task.subtasks ?? []).length
-		? task.subtasks.map(s => `- ${s.title}${s.number != null ? ` (#${s.number})` : ''} [${s.id}]`).join('\n')
-		: '(none)';
-	const attachmentsMeta = (task.attachments ?? []).length
-		? task.attachments
-			.map(a => {
-				const local = downloaded.find(d => d.id === a.id);
-				return `- ${a.filename} (${a.mimeType}, ${a.size} bytes)${local ? ` → local: ${local.localPath}` : ''}`;
-			})
-			.join('\n')
-		: '(none)';
-	const localPath = task.localPath?.trim() || null;
-	const branch = opts?.activeBranch?.trim() || null;
+	// Description-only works; metadata-heavy prompts make Claude chase the wrong feature.
+	const description = (task.description?.trim() || task.title?.trim() || '').trim();
+	const parts: string[] = [description];
 
-	return [
-		`Start implementing it now.`,
-		``,
-		`## Task`,
-		`- ID: ${task.id}`,
-		`- Ref: ${code}`,
-		`- Title: ${task.title}`,
-		`- Project: ${task.projectName} (${task.projectId})`,
-		`- Local workspace path: ${localPath ?? '(not configured in Kaneo project settings)'}`,
-		branch ? `- Branch: ${branch}` : null,
-		`- Status / column: ${task.columnName ?? '(none)'} (${task.columnId ?? 'n/a'})`,
-		`- Priority: ${task.priority ?? '(none)'}`,
-		`- Due: ${due}`,
-		`- Labels: ${labels}`,
-		``,
-		`## Description`,
-		task.description?.trim() || '(no description)',
-		``,
-		`## Comments`,
-		comments,
-		``,
-		`## Sub-issues`,
-		subtasks,
-		``,
-		`## Relations`,
-		relations,
-		``,
-		`## Attachments`,
-		attachmentsMeta,
-		downloaded.some(isTextishAttachment)
-			? `Text attachments are also attached as file selections below — read them.`
-			: '',
-		``,
-		`## Instructions`,
-		localPath
-			? `Work inside the local workspace at ${localPath}. Discover related files there.`
-			: `No local path is configured for this Kaneo project — ask the user which folder to use, or discover files in the current workspace.`,
-		branch ? `You are on git branch ${branch}. Keep commits on this branch.` : '',
-		`Read the description carefully.`,
-		`If acceptance criteria appear in the description, treat them as the definition of done.`,
-		`Ask only if something is blocked; otherwise start working.`,
-	].filter(line => line != null && line !== undefined).join('\n');
+	if (task.comments.length) {
+		parts.push(
+			'',
+			'Comments:',
+			...task.comments.map(c => `- ${c.authorName}: ${c.content}`),
+		);
+	}
+
+	if (downloaded.some(isTextishAttachment)) {
+		parts.push('', 'Text attachments are attached as file selections — read them.');
+	}
+
+	return parts.join('\n').trim();
 }
 
 function selectionsFromDownloads(downloaded: KaneoDownloadedAttachment[]): StagingSelectionItem[] {

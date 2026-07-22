@@ -15,6 +15,7 @@ export const sendLLMMessage = async ({
 	onText: onText_,
 	onFinalMessage: onFinalMessage_,
 	onError: onError_,
+	onCliToolEvent,
 	abortRef: abortRef_,
 	logging: { loggingName, loggingExtras },
 	settingsOfProvider,
@@ -108,7 +109,7 @@ export const sendLLMMessage = async ({
 		}
 		const { sendFIM, sendChat } = implementation
 		if (messagesType === 'chatMessages') {
-			await sendChat({ messages: messages_, onText, onFinalMessage, onError, settingsOfProvider, modelSelectionOptions, overridesOfModel, modelName, _setAborter, providerName, separateSystemMessage, chatMode, mcpTools })
+			await sendChat({ messages: messages_, onText, onFinalMessage, onError, onCliToolEvent, settingsOfProvider, modelSelectionOptions, overridesOfModel, modelName, _setAborter, providerName, separateSystemMessage, chatMode, mcpTools })
 			return
 		}
 		if (messagesType === 'FIMMessage') {

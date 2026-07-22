@@ -30,6 +30,7 @@ import { IsRunningType } from '../../../chatThreadService.js';
 import { acceptAllBg, acceptBorder, buttonFontSize, buttonTextColor, rejectAllBg, rejectBg, rejectBorder } from '../../../../common/helpers/colors.js';
 import { builtinToolNames, isABuiltinToolName, MAX_FILE_CHARS_PAGE, MAX_TERMINAL_INACTIVE_TIME } from '../../../../common/prompt/prompts.js';
 import { RawToolCallObj } from '../../../../common/sendLLMMessageTypes.js';
+import { isVoidCliDisplayOnlyTool } from '../../../../common/mapClaudeCliToolToVoid.js';
 import ErrorBoundary from './ErrorBoundary.js';
 import { ToolApprovalTypeSwitch } from '../void-settings-tsx/Settings.js';
 
@@ -917,8 +918,29 @@ const EditTool = ({ toolMessage, threadId, messageIdx, content }: Parameters<Res
 	const desc1OnClick = () => voidOpenFileFn(params.uri, accessor)
 	const componentParams: ToolHeaderParams = { title, desc1, desc1OnClick, desc1Info, isError, icon, isRejected, }
 
-
+	const cliDisplayOnly = isVoidCliDisplayOnlyTool(rawParams)
 	const editToolType = toolMessage.name === 'edit_file' ? 'diff' : 'rewrite'
+
+	// Claude CLI already applied — collapsed header + optional +N -M (no Apply/Reject)
+	if (cliDisplayOnly && toolMessage.type === 'success') {
+		const rp = rawParams as Record<string, string | undefined>
+		const added = rp._added
+		const removed = rp._removed
+		if (added != null && removed != null) {
+			componentParams.desc2 = <span className="font-mono"><span className="text-green-600">+{added}</span>{' '}<span className="text-red-600">-{removed}</span></span>
+		}
+		if (content) {
+			componentParams.children = <ToolChildrenWrapper className='bg-void-bg-3'>
+				<EditToolChildren
+					uri={params.uri}
+					code={content}
+					type={editToolType}
+				/>
+			</ToolChildrenWrapper>
+		}
+		return <ToolHeaderWrapper {...componentParams} />
+	}
+
 	if (toolMessage.type === 'running_now' || toolMessage.type === 'tool_request') {
 		componentParams.children = <ToolChildrenWrapper className='bg-void-bg-3'>
 			<EditToolChildren
@@ -1403,17 +1425,17 @@ const loadingTitleWrapper = (item: React.ReactNode): React.ReactNode => {
 }
 
 const titleOfBuiltinToolName = {
-	'read_file': { done: 'Read file', proposed: 'Read file', running: loadingTitleWrapper('Reading file') },
+	'read_file': { done: 'Read', proposed: 'Read file', running: loadingTitleWrapper('Reading file') },
 	'ls_dir': { done: 'Inspected folder', proposed: 'Inspect folder', running: loadingTitleWrapper('Inspecting folder') },
 	'get_dir_tree': { done: 'Inspected folder tree', proposed: 'Inspect folder tree', running: loadingTitleWrapper('Inspecting folder tree') },
 	'search_pathnames_only': { done: 'Searched by file name', proposed: 'Search by file name', running: loadingTitleWrapper('Searching by file name') },
 	'search_for_files': { done: 'Searched', proposed: 'Search', running: loadingTitleWrapper('Searching') },
 	'create_file_or_folder': { done: `Created`, proposed: `Create`, running: loadingTitleWrapper(`Creating`) },
 	'delete_file_or_folder': { done: `Deleted`, proposed: `Delete`, running: loadingTitleWrapper(`Deleting`) },
-	'edit_file': { done: `Edited file`, proposed: 'Edit file', running: loadingTitleWrapper('Editing file') },
-	'rewrite_file': { done: `Wrote file`, proposed: 'Write file', running: loadingTitleWrapper('Writing file') },
-	'run_command': { done: `Ran terminal`, proposed: 'Run terminal', running: loadingTitleWrapper('Running terminal') },
-	'run_persistent_command': { done: `Ran terminal`, proposed: 'Run terminal', running: loadingTitleWrapper('Running terminal') },
+	'edit_file': { done: `Edited`, proposed: 'Edit file', running: loadingTitleWrapper('Editing file') },
+	'rewrite_file': { done: `Wrote`, proposed: 'Write file', running: loadingTitleWrapper('Writing file') },
+	'run_command': { done: `Ran`, proposed: 'Run terminal', running: loadingTitleWrapper('Running terminal') },
+	'run_persistent_command': { done: `Ran`, proposed: 'Run terminal', running: loadingTitleWrapper('Running terminal') },
 
 	'open_persistent_terminal': { done: `Opened terminal`, proposed: 'Open terminal', running: loadingTitleWrapper('Opening terminal') },
 	'kill_persistent_terminal': { done: `Killed terminal`, proposed: 'Kill terminal', running: loadingTitleWrapper('Killing terminal') },
@@ -1826,6 +1848,11 @@ const CommandTool = ({ toolMessage, type, threadId }: { threadId: string } & ({
 		// 	onClick={() => { terminalToolsService.openTerminal(terminalId) }}
 		// />
 
+		// Claude CLI already ran — header only (no empty output block)
+		if (isVoidCliDisplayOnlyTool(rawParams)) {
+			return <ToolHeaderWrapper {...componentParams} />
+		}
+
 		let msg: string
 		if (type === 'run_command') msg = toolsService.stringOfResult['run_command'](toolMessage.params, result)
 		else msg = toolsService.stringOfResult['run_persistent_command'](toolMessage.params, result)
@@ -2035,23 +2062,25 @@ const builtinToolNameToComponent: { [T in BuiltinToolName]: { resultWrapper: Res
 
 			if (toolMessage.type === 'success') {
 				const { result } = toolMessage
-				componentParams.numResults = result.children?.length
-				componentParams.hasNextPage = result.hasNextPage
-				componentParams.children = !result.children || (result.children.length ?? 0) === 0 ? undefined
-					: <ToolChildrenWrapper>
-						{result.children.map((child, i) => (<ListableToolItem key={i}
-							name={`${child.name}${child.isDirectory ? '/' : ''}`}
-							className='w-full overflow-auto'
-							onClick={() => {
-								voidOpenFileFn(child.uri, accessor)
-								// commandService.executeCommand('workbench.view.explorer'); // open in explorer folders view instead
-								// explorerService.select(child.uri, true);
-							}}
-						/>))}
-						{result.hasNextPage &&
-							<ListableToolItem name={`Results truncated (${result.itemsRemaining} remaining).`} isSmall={true} className='w-full overflow-auto' />
-						}
-					</ToolChildrenWrapper>
+				if (!isVoidCliDisplayOnlyTool(rawParams)) {
+					componentParams.numResults = result.children?.length
+					componentParams.hasNextPage = result.hasNextPage
+					componentParams.children = !result.children || (result.children.length ?? 0) === 0 ? undefined
+						: <ToolChildrenWrapper>
+							{result.children.map((child, i) => (<ListableToolItem key={i}
+								name={`${child.name}${child.isDirectory ? '/' : ''}`}
+								className='w-full overflow-auto'
+								onClick={() => {
+									voidOpenFileFn(child.uri, accessor)
+									// commandService.executeCommand('workbench.view.explorer'); // open in explorer folders view instead
+									// explorerService.select(child.uri, true);
+								}}
+							/>))}
+							{result.hasNextPage &&
+								<ListableToolItem name={`Results truncated (${result.itemsRemaining} remaining).`} isSmall={true} className='w-full overflow-auto' />
+							}
+						</ToolChildrenWrapper>
+				}
 			}
 			else if (toolMessage.type === 'tool_error') {
 				const { result } = toolMessage
@@ -2087,20 +2116,22 @@ const builtinToolNameToComponent: { [T in BuiltinToolName]: { resultWrapper: Res
 
 			if (toolMessage.type === 'success') {
 				const { result, rawParams } = toolMessage
-				componentParams.numResults = result.uris.length
-				componentParams.hasNextPage = result.hasNextPage
-				componentParams.children = result.uris.length === 0 ? undefined
-					: <ToolChildrenWrapper>
-						{result.uris.map((uri, i) => (<ListableToolItem key={i}
-							name={getBasename(uri.fsPath)}
-							className='w-full overflow-auto'
-							onClick={() => { voidOpenFileFn(uri, accessor) }}
-						/>))}
-						{result.hasNextPage &&
-							<ListableToolItem name={'Results truncated.'} isSmall={true} className='w-full overflow-auto' />
-						}
+				if (!isVoidCliDisplayOnlyTool(rawParams)) {
+					componentParams.numResults = result.uris.length
+					componentParams.hasNextPage = result.hasNextPage
+					componentParams.children = result.uris.length === 0 ? undefined
+						: <ToolChildrenWrapper>
+							{result.uris.map((uri, i) => (<ListableToolItem key={i}
+								name={getBasename(uri.fsPath)}
+								className='w-full overflow-auto'
+								onClick={() => { voidOpenFileFn(uri, accessor) }}
+							/>))}
+							{result.hasNextPage &&
+								<ListableToolItem name={'Results truncated.'} isSmall={true} className='w-full overflow-auto' />
+							}
 
-					</ToolChildrenWrapper>
+						</ToolChildrenWrapper>
+				}
 			}
 			else if (toolMessage.type === 'tool_error') {
 				const { result } = toolMessage
@@ -2142,20 +2173,22 @@ const builtinToolNameToComponent: { [T in BuiltinToolName]: { resultWrapper: Res
 
 			if (toolMessage.type === 'success') {
 				const { result, rawParams } = toolMessage
-				componentParams.numResults = result.uris.length
-				componentParams.hasNextPage = result.hasNextPage
-				componentParams.children = result.uris.length === 0 ? undefined
-					: <ToolChildrenWrapper>
-						{result.uris.map((uri, i) => (<ListableToolItem key={i}
-							name={getBasename(uri.fsPath)}
-							className='w-full overflow-auto'
-							onClick={() => { voidOpenFileFn(uri, accessor) }}
-						/>))}
-						{result.hasNextPage &&
-							<ListableToolItem name={`Results truncated.`} isSmall={true} className='w-full overflow-auto' />
-						}
+				if (!isVoidCliDisplayOnlyTool(rawParams)) {
+					componentParams.numResults = result.uris.length
+					componentParams.hasNextPage = result.hasNextPage
+					componentParams.children = result.uris.length === 0 ? undefined
+						: <ToolChildrenWrapper>
+							{result.uris.map((uri, i) => (<ListableToolItem key={i}
+								name={getBasename(uri.fsPath)}
+								className='w-full overflow-auto'
+								onClick={() => { voidOpenFileFn(uri, accessor) }}
+							/>))}
+							{result.hasNextPage &&
+								<ListableToolItem name={`Results truncated.`} isSmall={true} className='w-full overflow-auto' />
+							}
 
-					</ToolChildrenWrapper>
+						</ToolChildrenWrapper>
+				}
 			}
 			else if (toolMessage.type === 'tool_error') {
 				const { result } = toolMessage
